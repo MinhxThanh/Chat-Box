@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNotification } from '../context/NotificationContext';
 import { Chat } from '../components/Chat';
 import { Button } from '../components/ui/button';
@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { DeleteConfirmDialog } from '../components/Message';
 import ApiKeyForm from '../components/ApiKeyForm';
+import { getAllConversations, saveConversation, deleteConversation } from '../utils/db';
 import "../globals.css";
 import { Settings, PlusCircle, X, Save, Loader2, Trash2, History, Plus, MoveLeft, ArrowLeftFromLine, Minus } from 'lucide-react';
 
@@ -48,12 +49,9 @@ const Sidebar = () => {
     ],
     selectedModel: null
   });
-  const [conversations, setConversations] = useState([{
-    id: `default-${Date.now()}`, // Ensure unique ID with timestamp
-    title: 'New Conversation',
-    messages: []
-  }]);
-  const [activeConversation, setActiveConversation] = useState(`default-${Date.now()}`); // Match the initial ID
+  const [conversations, setConversations] = useState([]); // Loaded asynchronously from IndexedDB
+  const [activeConversation, setActiveConversation] = useState(null); // Match the initial ID
+  const [isConversationsLoading, setIsConversationsLoading] = useState(true);
 
   // Load settings from localStorage on initial render
   useEffect(() => {
@@ -76,49 +74,39 @@ const Sidebar = () => {
         selectedModel: null
       });
     }
-
-    const savedConversations = localStorage.getItem('aiChatConversations');
-    if (savedConversations) {
-      try {
-        // Parse conversations and ensure each has a unique ID
-        const parsedConversations = JSON.parse(savedConversations);
-        
-        // Ensure each conversation has a unique ID and prevent duplicate titles
-        const usedIds = new Set();
-        const conversationsWithUniqueIds = parsedConversations.map(conversation => {
-          // Generate a new ID if missing, invalid, or duplicate
-          let id = conversation.id;
-          if (!id || typeof id !== 'string' || usedIds.has(id)) {
-            id = `conv-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
-          }
-          usedIds.add(id);
-          
-          // Ensure title is always a valid string
-          let currentTitle = conversation.title;
-          if (typeof currentTitle !== 'string' || currentTitle.trim() === '') {
-            // Use a default title if it's not a string or is empty/whitespace
-            currentTitle = `Conversation ${id.substring(0, 6)}`;
-          }
-          
-          return {
-            ...conversation,
-            id,
-            title: currentTitle // Assign the sanitized title
-          };
-        });
-        
-        setConversations(conversationsWithUniqueIds);
-      } catch (error) {
-        console.error('Error parsing conversations:', error);
-        // If there's an error, create a default conversation
-        setConversations([{
-          id: `default-${Date.now()}`,
-          title: 'New Conversation',
-          messages: []
-        }]);
-      }
-    }
   }, []);
+
+  // Load conversations from IndexedDB on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const all = await getAllConversations();
+        if (all && all.length > 0) {
+          setConversations(all);
+          setActiveConversation(all[0].id);
+        } else {
+          const defaultConv = { id: `conv-${Date.now()}`, title: 'New Conversation', messages: [] };
+          setConversations([defaultConv]);
+          setActiveConversation(defaultConv.id);
+          await saveConversation(defaultConv);
+        }
+      } catch (err) {
+        console.error('Failed to load conversations from IndexedDB', err);
+      } finally {
+        setIsConversationsLoading(false);
+      }
+    })();
+  }, []);
+
+  // Persist every conversation change to IndexedDB
+  useEffect(() => {
+    conversations.forEach(c => {
+      // Basic guard to avoid saving empty placeholder
+      if (c && c.id) {
+        saveConversation(c);
+      }
+    });
+  }, [conversations]);
 
   // Save settings to localStorage and chrome.storage.local whenever they change
   useEffect(() => {
@@ -230,7 +218,9 @@ const Sidebar = () => {
       messages: []
     };
 
-    setConversations([...conversations, newConversation]);
+    const newList = [...conversations, newConversation];
+  setConversations(newList);
+  saveConversation(newConversation);
     setActiveConversation(newId);
     setActiveView('chat');
   };
@@ -723,18 +713,69 @@ const Sidebar = () => {
     </div>
   );
 
-  // Get the current conversation
-  // Ensure we're passing a properly structured conversation object to Chat
-  const findConversation = conversations.find(c => c.id === activeConversation) || conversations[0] || null;
-  const currentConversation = findConversation ? {
-    id: typeof findConversation.id === 'string' ? findConversation.id : String(findConversation.id || ''),
-    title: typeof findConversation.title === 'string' ? findConversation.title : 'Untitled',
-    messages: Array.isArray(findConversation.messages) ? findConversation.messages : []
-  } : {
-    id: `fallback-${Date.now()}`,
-    title: 'New Conversation',
-    messages: []
-  };
+  const currentConversation = useMemo(() => {
+    const findConversation = conversations.find(c => c.id === activeConversation) || conversations[0] || null;
+
+    if (findConversation) {
+      return {
+        ...findConversation,
+        title: typeof findConversation.title === 'string' ? findConversation.title : 'Untitled',
+        messages: Array.isArray(findConversation.messages) ? findConversation.messages : []
+      };
+    }
+
+    // Return a stable fallback object if no conversation is found
+    return {
+      id: 'fallback-conversation',
+      title: 'New Conversation',
+      messages: []
+    };
+  }, [conversations, activeConversation]);
+
+  const handleUpdateConversation = useCallback((updatedConversation) => {
+    // Ensure the updated conversation is a valid object with an id and messages array
+    if (!updatedConversation || typeof updatedConversation !== 'object' || !updatedConversation.id || !Array.isArray(updatedConversation.messages)) {
+      console.error('Invalid conversation format:', updatedConversation);
+      return;
+    }
+
+    let conversationToUpdate = { ...updatedConversation };
+
+    // Auto-generate title from the first user message
+    if (conversationToUpdate.title === 'New Conversation' && conversationToUpdate.messages.length > 0) {
+      const firstUserMessage = conversationToUpdate.messages.find(m => m.role === 'user');
+      if (firstUserMessage) {
+        let title = '';
+        if (typeof firstUserMessage.content === 'string') {
+          title = firstUserMessage.content;
+        } else if (Array.isArray(firstUserMessage.content)) {
+          const textPart = firstUserMessage.content.find(p => p.type === 'text');
+          if (textPart) {
+            title = textPart.text;
+          }
+        }
+        
+        if (title) {
+          // Truncate title to a reasonable length
+          conversationToUpdate.title = title.substring(0, 50);
+        }
+      }
+    }
+    
+    setConversations(prevConversations => 
+      prevConversations.map(c => 
+        c.id === conversationToUpdate.id ? conversationToUpdate : c
+      )
+    );
+  }, []);
+
+  if (isConversationsLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -757,6 +798,7 @@ const Sidebar = () => {
         <main className="flex-1 overflow-hidden relative z-10 bg-background">
           {activeView === 'chat' && (
             <Chat
+              key={currentConversation.id}
               apiKey={(() => {
                 // Find the provider that owns the selected model
                 if (settings.selectedModel) {
@@ -815,28 +857,7 @@ const Sidebar = () => {
                 setSettings({ ...settings, selectedModel: newModel });
               }}
               conversation={currentConversation}
-              onUpdateConversation={(updatedMessages) => {
-                // Ensure messages are valid before updating state
-                if (!Array.isArray(updatedMessages)) {
-                  console.error('Invalid messages format:', updatedMessages);
-                  return;
-                }
-                
-                // Create a new array reference to trigger React update
-                const updatedConversations = conversations.map(c => {
-                  if (c.id === activeConversation) {
-                    // Create a new object reference for the updated conversation
-                    return { 
-                      ...c, 
-                      // Ensure valid title and message format
-                      title: typeof c.title === 'string' ? c.title : 'Untitled',
-                      messages: updatedMessages 
-                    };
-                  }
-                  return c;
-                });
-                setConversations(updatedConversations);
-              }}
+              onUpdateConversation={handleUpdateConversation}
             />
           )}
           {activeView === 'settings' && renderSettingsView()}

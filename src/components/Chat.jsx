@@ -6,6 +6,7 @@ import { extractTextFromDocument, DocumentContext } from "./DocumentProcessor";
 import { YouTubeContext } from "./YouTubeContext";
 import { WELCOME_MESSAGE } from "../utils/prompts";
 import { YoutubeTranscript } from 'youtube-transcript';
+import { saveImage, getImage } from "../utils/db";
 
 export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversation, availableModels, onModelChange }) => {
   const [messages, setMessages] = useState(
@@ -17,9 +18,10 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState(null); // Will now store { file, id } for images
   const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
   const [uploadedImageBase64, setUploadedImageBase64] = useState(null);
+  const [imageUrls, setImageUrls] = useState({}); // Stores blob URLs for images in messages
   const [isFileDropdownOpen, setIsFileDropdownOpen] = useState(false);
   const [fileUploadError, setFileUploadError] = useState(null);
   // Document chat states
@@ -87,6 +89,16 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
   useEffect(() => {
     adjustTextareaHeight();
   }, [input, adjustTextareaHeight]);
+
+  useEffect(() => {
+    // Cleanup function to run when the component unmounts
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []); // Empty dependency array ensures this runs only on mount and unmount
+
 
   useEffect(() => {
     // Check if conversation.id exists and has changed to reset context
@@ -176,21 +188,27 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
   }, [messages]);
 
   useEffect(() => {
-    if (onUpdateConversation && messages.length > 0) {
-      const currentMessagesJSON = JSON.stringify(
-        messages.filter(msg => msg.role !== 'system' ||
-          (msg.role === 'system' && !msg.content.startsWith('Welcome to the Chat Box!')))
-      );
-      const conversationMessagesJSON = JSON.stringify(
-        (conversation?.messages || []).filter(msg => msg.role !== 'system' ||
-          (msg.role === 'system' && !msg.content.startsWith('Welcome to the Chat Box!')))
-      );
-
-      if (currentMessagesJSON !== conversationMessagesJSON) {
-        onUpdateConversation(messages);
+    const handler = setTimeout(() => {
+      if (onUpdateConversation && conversation?.id && messages.length > 0) {
+        const currentMessagesJSON = JSON.stringify(
+          messages.filter(msg => msg.role !== 'system' ||
+            (msg.role === 'system' && !msg.content.startsWith('Welcome to the Chat Box!')))
+        );
+        const conversationMessagesJSON = JSON.stringify(
+          (conversation?.messages || []).filter(msg => msg.role !== 'system' ||
+            (msg.role === 'system' && !msg.content.startsWith('Welcome to the Chat Box!')))
+        );
+  
+        if (currentMessagesJSON !== conversationMessagesJSON) {
+          onUpdateConversation({ ...conversation, messages });
+        }
       }
-    }
-  }, [messages, onUpdateConversation, conversation?.id]);
+    }, 500); // Debounce by 500ms
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [messages, onUpdateConversation, conversation]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -613,7 +631,7 @@ Consider this YouTube video context when responding.`;
         ...(modelToUse && { model: modelToUse }),
         messages: filteredMessages,
         max_tokens: 2000, // Adjust as needed
-        temperature: 0.7,
+        temperature: 0.5,
         stream: true
       };
       
@@ -636,7 +654,7 @@ Consider this YouTube video context when responding.`;
   };
 
   const stopStreamingResponse = () => {
-    if (abortControllerRef.current) {
+    if (abortControllerRef.current && isStreaming) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsStreaming(false);
@@ -738,7 +756,7 @@ Consider this YouTube video context when responding.`;
       const response = await fetch(completionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: modelToUse, messages: filteredMessages, max_tokens: 2000, temperature: 0.7 })
+        body: JSON.stringify({ model: modelToUse, messages: filteredMessages, max_tokens: 2000, temperature: 0.5 })
       });
       const data = await response.json().catch(() => ({ error: { message: response.statusText } }));
       if (!response.ok || data.error) {
@@ -795,20 +813,26 @@ Consider this YouTube video context when responding.`;
         setIsProcessingDocument(false);
       }
     } else if (file.type.startsWith('image/')) {
-      setUploadedFile(file); // Store the file object
-      if (uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl); // Revoke previous if any
-      const newImageUrl = URL.createObjectURL(file);
-      setUploadedImageUrl(newImageUrl);
+      const imageId = `img-${Date.now()}-${Math.random()}`;
+      const blob = file.slice(0, file.size, file.type);
+      await saveImage(imageId, blob);
+
+      setUploadedFile({ file, id: imageId }); // Store file and its new ID
+      setDocumentFile(null); setDocumentContent(null); // Clear other file types
+
+      // Create a local URL for immediate preview and revoke any previous one
+      if (uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl);
+      const localUrl = URL.createObjectURL(blob);
+      setUploadedImageUrl(localUrl);
+
+      // Also prepare the base64 for the API call
       try {
-        const base64Image = await fileToBase64(file);
-        setUploadedImageBase64(base64Image);
-        // Clear document states if an image is uploaded
-        setDocumentFile(null); setDocumentContent(null); setActiveChunkIndex(0);
+        const base64 = await fileToBase64(file);
+        setUploadedImageBase64(base64);
       } catch (error) {
         console.error('Error converting image to Base64:', error);
         setFileUploadError("Failed to process image for API.");
         setTimeout(() => setFileUploadError(null), 3000);
-        // Don't clear uploadedFile/uploadedImageUrl here, user might still want to see it locally
       }
     } else {
       setFileUploadError(`Unsupported file type: ${file.type || 'Unknown'}`);
@@ -1008,7 +1032,7 @@ Consider this YouTube video context when responding.`;
     if (originalInputText === "" && !uploadedFile && !documentFile && !scrapedUrlContent && !youtubeInfo) { // No input at all
         return;
     }
-    if (uploadedFile && uploadedFile.type.startsWith('image/') && originalInputText === "") {
+    if (uploadedFile && uploadedFile.file.type.startsWith('image/') && originalInputText === "") {
       setMessages(prev => [...prev, {role: "system", content: "Please add a text description or question when uploading an image."}]);
       return;
     }
@@ -1022,10 +1046,10 @@ Consider this YouTube video context when responding.`;
     let uiUserMessageContent;
     let apiUserMessageContent; // This will be used for the API call
 
-    if (uploadedFile && uploadedFile.type.startsWith('image/') && uploadedImageBase64) {
+    if (uploadedFile && uploadedFile.file.type.startsWith('image/') && uploadedImageBase64) {
         uiUserMessageContent = [
             { type: "text", text: originalInputText },
-            { type: "image_url", image_url: { url: uploadedImageUrl } } // For UI display
+            { type: "image_ref", imageId: uploadedFile.id }
         ];
         apiUserMessageContent = [ // For API
             { type: "text", text: originalInputText },
@@ -1035,7 +1059,7 @@ Consider this YouTube video context when responding.`;
         uiUserMessageContent = originalInputText;
         apiUserMessageContent = originalInputText;
     } else { // Simple text message or text with non-image file (handled by [File attached])
-        uiUserMessageContent = originalInputText + (uploadedFile ? `\n[File attached: ${uploadedFile.name}]` : "");
+        uiUserMessageContent = originalInputText + (uploadedFile ? `\n[File attached: ${uploadedFile.file.name}]` : "");
         apiUserMessageContent = uiUserMessageContent;
     }
     
@@ -1062,7 +1086,6 @@ Consider this YouTube video context when responding.`;
     // --- Build messages for API ---
     // Start with a clean array of historical messages, filtering out non-API system messages
     let messagesToSendToAPI = messagesBeforeThisSend.filter(msg =>
-        !(msg.role === "system" && msg.content.startsWith("Welcome to the Chat Box!")) &&
         !(msg.role === "system" && msg.content.startsWith("Error scraping URL:")) &&
         !(msg.role === "system" && msg.content.startsWith("Scraping web page:")) &&
         !(msg.role === "system" && msg.content.startsWith("🧠 Analyzing")) &&
@@ -1074,20 +1097,56 @@ Consider this YouTube video context when responding.`;
         !(msg.role === "system" && msg.content.startsWith("⚠️ Network error during AI query analysis"))
     );
 
+  // --- Transform image_ref to image_url for API history ---
+  messagesToSendToAPI = await Promise.all(
+    messagesToSendToAPI.map(async (msg) => {
+      if (msg.role === 'user' && Array.isArray(msg.content)) {
+        const newContent = await Promise.all(
+          msg.content.map(async (part) => {
+            if (part.type === 'image_ref' && part.imageId) {
+              try {
+                const blob = await getImage(part.imageId);
+                if (blob) {
+                  const base64Url = await fileToBase64(blob);
+                  return { type: 'image_url', image_url: { url: base64Url } };
+                }
+                return null; // Image not found in DB
+              } catch (error) {
+                console.error(`Failed to convert image ${part.imageId} to base64:`, error);
+                return null; // Conversion failed
+              }
+            }
+            return part;
+          })
+        );
+        const filteredContent = newContent.filter(Boolean);
+        return { ...msg, content: filteredContent };
+      }
+      return msg;
+    })
+  );
 
     // Add Document Context if available
     if (documentFile && documentContent?.chunks && documentContent.chunks.length > 0) {
         let fullDocumentText = "";
         documentContent.chunks.forEach((chunk, index) => {
-            fullDocumentText += `--- Chunk ${index + 1} of ${documentContent.chunks.length} ---\n${chunk.text}\n\n`;
+            fullDocumentText += `--- Chunk ${index + 1} of ${documentContent.chunks.length} ---
+${chunk.text}
+
+`;
         });
         // Remove the last two newlines for cleaner formatting if fullDocumentText is not empty
         if (fullDocumentText.length > 0) {
             fullDocumentText = fullDocumentText.slice(0, -2);
         }
-        const docInfo = `System Note: The user is interacting with the document "${documentFile.name}". The full content of the document (split into ${documentContent.chunks.length} chunks) is provided below:\n\n${fullDocumentText}`;
-        messagesToSendToAPI.push({ role: "system", content: docInfo });
+
+        const documentContextMessage = {
+            role: "system",
+            content: `The user has uploaded a document named "${documentFile.name}". Use the following content to answer the user's question:\n\n${fullDocumentText}`
+        };
+        messagesToSendToAPI.unshift(documentContextMessage);
     }
+
     // Add Scraped URL Context if available (takes precedence if both doc and URL are somehow active)
     if (scrapedUrlContent && scrapedUrlChunks.length > 0) {
         const allChunksText = scrapedUrlChunks.map(c => c.text).join("\n\n---\n\n");
@@ -1549,6 +1608,108 @@ Full web page content:\n${allChunksText}`;
     }
   };
 
+  useEffect(() => {
+    // Migrate old message format if needed
+    const migrateAndSetMessages = async () => {
+      if (!conversation?.id || (conversation.messages && conversation.messages.length === 0)) {
+        setMessages([{ role: "system", content: WELCOME_MESSAGE }]);
+        return;
+      }
+
+      let messagesModified = false;
+      const newMessages = JSON.parse(JSON.stringify(conversation.messages)); // Deep copy
+
+      for (const message of newMessages) {
+        if (message.role === 'user' && Array.isArray(message.content)) {
+          for (let i = 0; i < message.content.length; i++) {
+            const part = message.content[i];
+            if (part.type === 'image_url' && part.image_url.url.startsWith('data:image')) {
+              const blob = dataURIToBlob(part.image_url.url);
+              if (blob) {
+                const imageId = `img-${Date.now()}-${Math.random()}`;
+                await saveImage(imageId, blob);
+                message.content[i] = { type: 'image_ref', imageId };
+                messagesModified = true;
+              }
+            }
+          }
+        }
+      }
+
+      setMessages(newMessages);
+      if (messagesModified) {
+        onUpdateConversation({ ...conversation, messages: newMessages });
+      }
+    };
+
+    if (conversation?.id) {
+      migrateAndSetMessages();
+      // Reset states
+      setInput("");
+      setIsLoading(false);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      setUploadedFile(null);
+      setUploadedImageUrl(null);
+      setUploadedImageBase64(null);
+      setDocumentFile(null);
+      setDocumentContent(null);
+      setScrapedUrlContent(null);
+      setYoutubeInfo(null);
+    }
+  }, [conversation?.id, onUpdateConversation]);
+
+  useEffect(() => {
+    const loadImageUrls = async () => {
+      const urlsToSet = {};
+      const imageIdsInMessages = new Set();
+
+      messages.forEach(msg => {
+        if (Array.isArray(msg.content)) {
+          msg.content.forEach(part => {
+            if (part.type === 'image_ref' && part.imageId) {
+              imageIdsInMessages.add(part.imageId);
+              if (!imageUrls[part.imageId]) {
+                urlsToSet[part.imageId] = true;
+              }
+            }
+          });
+        }
+      });
+
+      for (const imageId in urlsToSet) {
+        const blob = await getImage(imageId);
+        if (blob) {
+          urlsToSet[imageId] = URL.createObjectURL(blob);
+        } else {
+          delete urlsToSet[imageId];
+        }
+      }
+
+      if (Object.keys(urlsToSet).length > 0) {
+        setImageUrls(prev => ({ ...prev, ...urlsToSet }));
+      }
+
+      Object.keys(imageUrls).forEach(imageId => {
+        if (!imageIdsInMessages.has(imageId)) {
+          URL.revokeObjectURL(imageUrls[imageId]);
+          setImageUrls(prev => {
+            const next = { ...prev };
+            delete next[imageId];
+            return next;
+          });
+        }
+      });
+    };
+
+    loadImageUrls();
+
+    return () => {
+      // This cleanup is tricky. A simple approach is to revoke all on unmount,
+      // but that might not be sufficient if messages change frequently.
+      // The current logic handles revocation when messages change.
+    };
+  }, [messages]);
+
   return (
     <div className="flex flex-col h-full relative z-10 bg-background">
       <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4 relative bg-background z-10 min-h-[200px]">
@@ -1643,6 +1804,7 @@ Full web page content:\n${allChunksText}`;
                 onRedoMessage={message.role === "assistant" && index === messages.length -1 && !isLoading ? handleRedoMessage : undefined} // Only allow redo for last, non-streaming assistant message
                 onEditMessage={message.role === "user" ? handleEditMessage : undefined}
                 isLatestUserMessage={message.role === "user" && index === lastUserMsgIndex && !isLoading} // Only allow edit if not loading
+                imageUrls={imageUrls}
               />
             );
           })
@@ -1757,12 +1919,12 @@ Full web page content:\n${allChunksText}`;
             <div className="flex-1 relative mx-1"> {/* Textarea and uploaded file preview */}
               {uploadedFile && (
                   <div className="mx-1 px-2 py-1 bg-primary/10 rounded-md text-xs flex items-center gap-1 mb-1 border border-primary/20">
-                    {uploadedFile.type.startsWith('image/') && uploadedImageUrl ? (
+                    {uploadedFile.file.type.startsWith('image/') && uploadedImageUrl ? (
                         <img src={uploadedImageUrl} alt="preview" className="h-6 w-6 object-cover rounded-sm"/>
                     ) : (
                         <FileText className="h-4 w-4 text-primary shrink-0"/>
                     )}
-                    <span className="truncate max-w-[150px] text-primary/80 text-[11px]" title={uploadedFile.name}>{uploadedFile.name}</span>
+                    <span className="truncate max-w-[150px] text-primary/80 text-[11px]" title={uploadedFile.file.name}>{uploadedFile.file.name}</span>
                     <Button variant="ghost" size="icon" className="h-5 w-5 p-0 hover:bg-destructive/20 rounded-full ml-auto" onClick={() => {setUploadedFile(null); if(uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl); setUploadedImageUrl(null); setUploadedImageBase64(null);}}>
                         <X className="h-3 w-3 text-destructive" />
                     </Button>

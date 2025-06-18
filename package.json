@@ -16,6 +16,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "file-type": "^21.0.0",
+    "idb": "^8.0.3",
     "lucide-react": "^0.279.0",
     "mammoth": "^1.9.1",
     "pdf-parse": "^1.1.1",

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Chat Box",
-  "version": "0.0.3",
-  "description": "A sidebar for chatting with AI",
+  "name": "Chat Box: Chat with all AI models (DeepSeek, Claude, Groq, Ollama, etc.)",
+  "version": "0.4.1",
+  "description": "AI chat, advanced web search, document interaction, and more into a convenient sidebar.",
   "action": {
     "default_icon": {
       "16": "assets/icon16.png",

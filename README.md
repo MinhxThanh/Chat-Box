@@ -1,5 +1,10 @@
 <div align="center">
-  <h1 style="display: flex; align-items: center; justify-content: center;"><img src="assets/icon48.svg" alt="Chat Box Logo" width="35" height="35" style="margin-right: 6px"> Chat Box</h1>
+<img width="214" alt="Screenshot 2025-06-07 at 11 50 22" src="https://github.com/user-attachments/assets/3ed1045a-9bf0-46b5-bf15-677cb7076d02" />
+</div>
+
+---
+<div align="center">
+  <img width="1095" alt="Chat Box Description Image" src="https://github.com/user-attachments/assets/2cd01baf-ba5c-46c9-995a-323fdc7bd2fb" />
 </div>
 
 ***Chat Box*** is a browser extension that streamlines your online experience by integrating AI chat, advanced web search, document interaction, and more into a convenient sidebar.
@@ -93,16 +98,16 @@ You can configure Chat Box to work with local LLMs like those served by Ollama.
 
 ## To-Do Plan
 
-- <input type="checkbox" disabled checked/> Add custom provider
-- <input type="checkbox" disabled checked/> Improve search
-- <input type="checkbox" disabled checked/> Public to Chrome Web Store
-- <input type="checkbox" disabled /> Improve UI when chat with image
-- <input type="checkbox" disabled /> Chat support file pdf
-- <input type="checkbox" disabled /> Improve store history chat
-- <input type="checkbox" disabled /> Better generate chat title
-- <input type="checkbox" disabled /> Using on Firefox
-- <input type="checkbox" disabled /> Custom UI
-- ...
+- [x] Add custom provider
+- [x] Improve search
+- [x] Improve UI when chat with image
+- [x] Improve store history chat
+- [ ] Public to Chrome Web Store
+- [ ] Chat support file pdf
+- [ ] Better generate chat title
+- [ ] Using on Firefox
+- [ ] Custom UI
+...
 
 ## Technologies Used
 

@@ -4,7 +4,7 @@ import { Markdown } from "./Markdown";
 import { Copy, RefreshCw, Edit, Check, X, ChevronDown, ChevronUp } from "lucide-react";
 import { WELCOME_MESSAGE } from "../utils/prompts";
 
-export const Message = ({ message, isUser, isStreaming, onRedoMessage, onEditMessage, isLatestUserMessage }) => {
+export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage, onEditMessage, isLatestUserMessage }) => {
   // Create a stable message ID to help React with keys
   const [messageId] = useState(() => `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
   const [isHovering, setIsHovering] = useState(false);
@@ -30,7 +30,7 @@ export const Message = ({ message, isUser, isStreaming, onRedoMessage, onEditMes
   };
   
   // Check if message contains images
-  const hasImages = isContentArray && message.content.some(item => item.type === 'image_url');
+  const hasImages = isContentArray && message.content.some(item => item.type === 'image_url' || item.type === 'image_ref');
   
   // Get message content as string for length checking and display
   const textContent = getTextContent();
@@ -127,17 +127,33 @@ export const Message = ({ message, isUser, isStreaming, onRedoMessage, onEditMes
               {/* Display image thumbnails if present */}
               {hasImages && (
                 <div className="mt-2">
-                  {message.content.map((item, i) => (
-                    item.type === 'image_url' && (
-                      <div key={`image-content-${i}`} className="mt-1 rounded overflow-hidden inline-block border border-primary/20">
-                        <img 
-                          src={item.image_url.url} 
-                          alt="Uploaded image" 
-                          className="max-h-[150px] max-w-full object-cover" 
-                        />
-                      </div>
-                    )
-                  ))}
+                  {message.content.map((item, i) => {
+                    if (item.type === 'image_url') {
+                      return (
+                        <div key={`image-content-${i}`} className="mt-1 rounded overflow-hidden inline-block border border-primary/20">
+                          <img
+                            src={item.image_url.url}
+                            alt="Uploaded image"
+                            className="max-h-[150px] max-w-full object-cover"
+                          />
+                        </div>
+                      );
+                    }
+                    if (item.type === 'image_ref') {
+                      const refUrl = imageUrls[item.imageId];
+                      if (!refUrl) return null;
+                      return (
+                        <div key={`image-content-${i}`} className="mt-1 rounded overflow-hidden inline-block border border-primary/20">
+                          <img
+                            src={refUrl}
+                            alt="Uploaded image"
+                            className="max-h-[150px] max-w-full object-cover"
+                          />
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
                 </div>
               )}
               
@@ -186,18 +202,21 @@ export const Message = ({ message, isUser, isStreaming, onRedoMessage, onEditMes
                 ))}
                 
                 {/* Display image parts */}
-                {message.content.filter(item => item.type === 'image_url').map((item, i) => (
-                  <div key={`img-part-${i}`} className="mt-2 mb-2">
-                    <p className="text-xs text-muted-foreground mb-1">Image from user:</p>
-                    <div className="rounded overflow-hidden border border-secondary-foreground/20">
-                      <img 
-                        src={item.image_url.url} 
-                        alt="From user" 
-                        className="max-h-[200px] max-w-full object-contain" 
-                      />
+                {message.content.filter(item => item.type === 'image_url' || item.type === 'image_ref').map((item, i) => {
+                  const imageUrl = item.type === 'image_ref' ? imageUrls[item.imageId] : item.image_url.url;
+                  if (!imageUrl) return null; // Don't render if URL is not loaded yet
+                  return (
+                    <div key={`img-part-${i}`} className="mt-2 mb-2">
+                      <div className="rounded overflow-hidden border border-secondary-foreground/20">
+                        <img
+                          src={imageUrl}
+                          alt="From user"
+                          className="max-h-[200px] max-w-full object-contain"
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </>
             ) : (
               <Markdown content={message.content} />

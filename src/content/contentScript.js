@@ -161,42 +161,17 @@ class YoutubeTranscript {
 
 // Function to create and display a video summary on the YouTube page
 function createVideoSummary() {
-  // Check if we're on a YouTube page
-  if (!isYouTubePage()) {
-    reject('Not a YouTube video page, summary not applicable');
-    return;
-  }
-
-  // Check if a summary container already exists and remove it if it does
-  const existingSummary = document.getElementById('chat-box-video-summary');
-  if (existingSummary) {
-    existingSummary.remove();
-  }
-
-  // Find a good location to insert the summary
-  // Try to find the video description area on YouTube
-  const secondaryDiv = document.querySelector('#secondary') ||
-    document.querySelector('#below') ||
-    document.querySelector('#meta');
-
-  if (!secondaryDiv) {
-    console.error('Could not find a suitable container for the summary');
-    return;
-  }
-
-  // Create the summary container
   const videoSummary = document.createElement('div');
   videoSummary.id = 'chat-box-video-summary';
   videoSummary.className = 'chat-box-video-summary';
 
-  // Style the summary container
   Object.assign(videoSummary.style, {
     backgroundColor: '#282828',
     color: 'white',
     padding: '16px',
     borderRadius: '12px',
     border: 'none',
-    width: 'calc(100% - 32px)', // Account for padding
+    width: 'calc(100% - 32px)',
     maxHeight: '500px',
     overflowY: 'auto',
     marginBottom: '20px',
@@ -205,16 +180,108 @@ function createVideoSummary() {
     lineHeight: '1.5',
     boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
     position: 'relative',
+    display: 'none', // Initially hidden
   });
 
-  // Add styles to make scrolling work properly
-  videoSummary.style.overflowY = 'auto';
   videoSummary.style.scrollbarWidth = 'thin';
   videoSummary.style.scrollbarColor = 'rgba(255,255,255,0.2) rgba(0,0,0,0)';
 
-  // Add a title to the summary
+  // Create a container for the action buttons
+  const buttonContainer = document.createElement('div');
+  buttonContainer.id = 'video-summary-actions';
+  Object.assign(buttonContainer.style, {
+    display: 'none', // Initially hidden
+    justifyContent: 'flex-end',
+    gap: '10px',
+    marginTop: '16px',
+    paddingTop: '10px',
+    borderTop: '1px solid rgba(255,255,255,0.1)'
+  });
+
+  // Create Copy button
+  const copyButton = document.createElement('button');
+  copyButton.innerHTML = `Copy <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" style="display: inline-block; vertical-align: middle; margin-left: 8px;">
+    <path d="M9 15C9 12.1716 9 10.7574 9.87868 9.87868C10.7574 9 12.1716 9 15 9L16 9C18.8284 9 20.2426 9 21.1213 9.87868C22 10.7574 22 12.1716 22 15V16C22 18.8284 22 20.2426 21.1213 21.1213C20.2426 22 18.8284 22 16 22H15C12.1716 22 10.7574 22 9.87868 21.1213C9 20.2426 9 18.8284 9 16L9 15Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M16.9999 9C16.9975 6.04291 16.9528 4.51121 16.092 3.46243C15.9258 3.25989 15.7401 3.07418 15.5376 2.90796C14.4312 2 12.7875 2 9.5 2C6.21252 2 4.56878 2 3.46243 2.90796C3.25989 3.07417 3.07418 3.25989 2.90796 3.46243C2 4.56878 2 6.21252 2 9.5C2 12.7875 2 14.4312 2.90796 15.5376C3.07417 15.7401 3.25989 15.9258 3.46243 16.092C4.51121 16.9528 6.04291 16.9975 9 16.9999" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+</svg>`;
+  Object.assign(copyButton.style, {
+    backgroundColor: 'hsl(249, 50%, 60%)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '10px 16px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    transition: 'all 0.2s ease-in-out'
+  });
+  const originalCopyIcon = copyButton.innerHTML;
+  const copiedIcon = `Copied <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 8px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+  copyButton.addEventListener('click', () => {
+    const summaryContent = document.getElementById('chat-box-summary-content');
+    if (summaryContent) {
+      const textToCopy = summaryContent.innerText;
+      
+      navigator.clipboard.writeText(textToCopy)
+        .then(() => {
+          copyButton.innerHTML = copiedIcon;
+          setTimeout(() => {
+            copyButton.innerHTML = originalCopyIcon;
+          }, 2000);
+        })
+        .catch(err => console.error('Failed to copy text: ', err));
+    }
+  });
+
+  // Create Open Sidebar button
+  const openSidebarButton = document.createElement('button');
+  openSidebarButton.innerHTML = `Open Sidebar <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" style="display: inline-block; vertical-align: middle; margin-left: 8px;">
+    <path opacity="0.4" d="M13 8.5H13.5V4.69635C13.5 4.31176 13.8118 4 14.1963 4C14.39 4 14.5749 4.08062 14.7066 4.22252L20.6598 10.6336C20.8785 10.8691 21 11.1786 21 11.5C21 11.8214 20.8785 12.1309 20.6598 12.3664L14.7066 18.7775C14.5749 18.9194 14.39 19 14.1963 19C13.8118 19 13.5 18.6882 13.5 18.3037V14.5C7.94555 14.5 4.94688 18.5162 4.19199 19.6847C4.06738 19.8776 3.85713 20 3.6275 20C3.28094 20 3 19.7191 3 19.3725V18.5C3 12.9772 7.47715 8.5 13 8.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M13.5 8.5V4.69635C13.5 4.31176 13.8118 4 14.1963 4C14.39 4 14.5749 4.08062 14.7066 4.22252L20.6598 10.6336C20.8785 10.8691 21 11.1786 21 11.5C21 11.8214 20.8785 12.1309 20.6598 12.3664L14.7066 18.7775C14.5749 18.9194 14.39 19 14.1963 19C13.8118 19 13.5 18.6882 13.5 18.3037V14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+</svg>`;
+  Object.assign(openSidebarButton.style, {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    color: 'white',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: '8px',
+    padding: '10px 16px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    transition: 'all 0.2s ease-in-out'
+  });
+  openSidebarButton.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'openSidebar' });
+  });
+
+  buttonContainer.append(copyButton, openSidebarButton);
+
+  // Add hover effects
+  copyButton.addEventListener('mouseover', () => {
+    copyButton.style.backgroundColor = 'hsl(249, 50%, 70%)';
+    copyButton.style.transform = 'translateY(-2px)';
+  });
+  copyButton.addEventListener('mouseout', () => {
+    copyButton.style.backgroundColor = 'hsl(249, 50%, 60%)';
+    copyButton.style.transform = 'translateY(0)';
+  });
+
+  openSidebarButton.addEventListener('mouseover', () => {
+    openSidebarButton.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+    openSidebarButton.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+    openSidebarButton.style.transform = 'translateY(-2px)';
+  });
+  openSidebarButton.addEventListener('mouseout', () => {
+    openSidebarButton.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+    openSidebarButton.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+    openSidebarButton.style.transform = 'translateY(0)';
+  });
+
   const summaryTitle = document.createElement('div');
-  summaryTitle.textContent = 'Video Summary (Loading...)';
   Object.assign(summaryTitle.style, {
     fontWeight: 'bold',
     fontSize: '16px',
@@ -226,7 +293,9 @@ function createVideoSummary() {
     alignItems: 'center'
   });
 
-  // Add a close button
+  const summaryTitleText = document.createElement('span');
+  summaryTitleText.textContent = 'Video Summary (Loading...)';
+
   const closeButton = document.createElement('button');
   closeButton.textContent = '×';
   Object.assign(closeButton.style, {
@@ -239,32 +308,22 @@ function createVideoSummary() {
     marginLeft: 'auto'
   });
   closeButton.addEventListener('click', () => {
-    videoSummary.remove();
+    videoSummary.style.display = 'none';
   });
+
+  summaryTitle.appendChild(summaryTitleText);
   summaryTitle.appendChild(closeButton);
 
-  // Add a content area for the summary
   const summaryContent = document.createElement('div');
   summaryContent.id = 'chat-box-summary-content';
-  // Object.assign(summaryContent.style, {
-  //   whiteSpace: 'pre-wrap'
-  // });
 
-  // Add the elements to the container
   videoSummary.appendChild(summaryTitle);
   videoSummary.appendChild(summaryContent);
+  videoSummary.appendChild(buttonContainer);
 
-  // Insert the summary at the top of the target container
-  if (secondaryDiv.firstChild) {
-    secondaryDiv.insertBefore(videoSummary, secondaryDiv.firstChild);
-  } else {
-    secondaryDiv.appendChild(videoSummary);
-  }
-
-  // Return the content element so we can update it later
   return {
     container: videoSummary,
-    title: summaryTitle,
+    title: summaryTitleText,
     content: summaryContent
   };
 }
@@ -402,7 +461,7 @@ Use a clear, neutral, and professional tone. Ensure the output is engaging and e
 
           // Update UI to show we're starting to receive the stream
           if (summaryElements) {
-            summaryElements.title.textContent = '📝 Video Summary (Streaming...)';
+            summaryElements.title.textContent = 'Video Summary (Streaming...)';
             summaryElements.content.innerHTML = renderMarkdown('Loading summary...');
           }
 
@@ -493,8 +552,14 @@ Use a clear, neutral, and professional tone. Ensure the output is engaging and e
 
           // Final update of the content
           if (summaryElements) {
-            summaryElements.title.textContent = '📝 Summary ' + videoInfo.title.substring(0, 30) + '...';
+            summaryElements.title.textContent = 'Summary ' + videoInfo.title.substring(0, 30) + '...';
             summaryElements.content.innerHTML = renderMarkdown(fullContent);
+
+            // Show the action buttons now that the content is fully loaded
+            const buttonContainer = document.getElementById('video-summary-actions');
+            if (buttonContainer) {
+              buttonContainer.style.display = 'flex';
+            }
           }
 
           resolve(fullContent || 'No summary generated');
@@ -541,6 +606,7 @@ function renderMarkdown(markdown) {
     .markdown-content td { padding: 0.5rem; border-top: 1px solid rgba(255, 255, 255, 0.1); }
     .markdown-content tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.05); }
     .markdown-hr { border: 0; height: 1px; background: rgba(255, 255, 255, 0.2); margin: 1.5rem 0; }
+    .summary-highlight-heading {font-size: 2rem; font-weight: bold; color: hsl(249, 40%, 54%); margin: 2rem 0 1rem 0; }
     /* AI Thinking styles */
     .ai-thinking-container { margin: 1rem 0; border: 1px solid #3b4351; border-radius: 6px; overflow: hidden; }
     .ai-thinking-header { display: flex; align-items: center; justify-content: space-between; padding: 0.7rem 1rem; background-color: #353940; cursor: pointer; }
@@ -557,24 +623,6 @@ function renderMarkdown(markdown) {
     styleEl.textContent = markdownStyles;
     document.head.appendChild(styleEl);
   }
-
-  // Helper function to create copy buttons for code blocks
-  const createCopyButton = (code) => {
-    return `
-      <button class="copy-button" onclick="(function(btn) { 
-        navigator.clipboard.writeText('${code.replace(/'/g, "\\'").replace(/\n/g, '\\n')}').then(() => {
-          btn.textContent = 'Copied!';
-          btn.classList.add('copied');
-          setTimeout(() => {
-            btn.textContent = 'Copy';
-            btn.classList.remove('copied');
-          }, 2000);
-        })
-      })(this)">
-        Copy
-      </button>
-    `;
-  };
 
   // Process thinking blocks first
   let hasThinkingContent = false;
@@ -645,7 +693,8 @@ function renderMarkdown(markdown) {
       .replace(/<\/li><br><li>/g, '</li><li>')
       .replace(/<br><li>/g, '<ul><li>')
       .replace(/<\/li><br>/g, '</li></ul>')
-      .replace(/<\/li>(?!<\/ul>)/g, '</li></ul>');
+      .replace(/<\/li>(?!<\/ul>)/g, '</li></ul>')
+      .replace(/<ul><\/ul>/g, '');
 
     return content;
   };
@@ -653,6 +702,9 @@ function renderMarkdown(markdown) {
   // Process main content and thinking content separately
   let mainHtml = processMarkdownContent(mainContent);
   let thinkingHtml = hasThinkingContent ? processMarkdownContent(thinkingContent) : '';
+
+  // Apply the custom heading class to Summary and Highlights sections
+  mainHtml = mainHtml.replace(/\[(Summary|Highlights)\]/g, '<strong class="summary-highlight-heading">[$1]</strong>');
 
   // Create the final HTML with thinking block if present
   let finalHtml = '';
@@ -681,8 +733,34 @@ function renderMarkdown(markdown) {
   return `<div class="markdown-content">${finalHtml}</div>`;
 }
 
+// Utility function to wait for an element to appear in the DOM
+function waitForElement(selector) {
+  return new Promise(resolve => {
+    const element = document.querySelector(selector);
+    if (element) {
+      return resolve(element);
+    }
+
+    const observer = new MutationObserver(() => {
+      const element = document.querySelector(selector);
+      if (element) {
+        resolve(element);
+        observer.disconnect();
+      }
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  });
+}
+
 // Create a button to open the sidebar and add it to the actions div
 function createFloatingButton() {
+  if (document.getElementById('ai-chat-sidebar-button')) {
+    return; // Button already exists
+  }
   // Look for the 'actions' div
   const actionsDiv = document.getElementById('actions');
   const topLevelButtonsComputedDiv = document.getElementById('top-level-buttons-computed');
@@ -709,7 +787,7 @@ function createFloatingButton() {
     fontFamily: 'Roboto, Arial, sans-serif',
     fontSize: '14px',
     fontWeight: '500',
-    transition: 'background-color 0.2s',
+    transition: 'background-color 0.2s, transform 0.2s',
     width: '120px',
     alignItems: 'center',
     display: 'flex',
@@ -717,63 +795,58 @@ function createFloatingButton() {
     gap: '8px',
   });
 
-  // Hover effect
+  // Hover effect with subtle lift and smoother background color transitions
   button.addEventListener('mouseover', () => {
-    button.style.backgroundColor = '#37376250'; // Darker red on hover
+    button.style.transform = 'translateY(-2px)';
+    button.style.boxShadow = '0px 4px 8px rgba(0, 0, 0, 0.1)';
+    button.style.backgroundColor = 'hsl(249, 50%, 70%)';
   });
-
   button.addEventListener('mouseout', () => {
-    button.style.backgroundColor = '#373762';
+    button.style.transform = 'translateY(0)';
+    button.style.boxShadow = 'none';
+    button.style.backgroundColor = 'hsl(249, 50%, 60%)';
   });
 
   // Click handler to open sidebar and generate summary for YouTube videos
   button.addEventListener('click', async () => {
+    const summaryContainer = document.getElementById('chat-box-video-summary');
+    if (!summaryContainer) {
+      console.error('AI Chat: Summary container not found.');
+      return;
+    }
 
-    // For YouTube pages, generate a summary and try opening sidebar
-    if (isYouTubePage()) {
-      // Extract YouTube video info
+    const isHidden = summaryContainer.style.display === 'none';
+    summaryContainer.style.display = isHidden ? 'block' : 'none';
+
+    if (isHidden && !summaryContainer.dataset.summaryFetched) {
+      summaryContainer.dataset.summaryFetched = 'true';
+
       const youtubeInfo = await extractYouTubeInfo();
-
       if (youtubeInfo) {
-        // Store in session storage for the sidebar to access
         try {
           sessionStorage.setItem('youtubeVideoContext', JSON.stringify(youtubeInfo));
         } catch (e) {
           console.error('Failed to store YouTube context:', e);
         }
 
-        // Create the summary container on the page
-        const summaryElements = createVideoSummary();
-        if (summaryElements) {
-          // Show loading state
-          summaryElements.title.textContent = `📝 Summarizing: ${youtubeInfo.title.substring(0, 50)}${youtubeInfo.title.length > 50 ? '...' : ''}`;
-          summaryElements.content.textContent = 'Generating video summary...';
+        const summaryTitle = summaryContainer.querySelector('span');
+        const summaryContent = summaryContainer.querySelector('#chat-box-summary-content');
 
-          // Fetch and display the summary with streaming
-          fetchVideoSummary(youtubeInfo, summaryElements)
-            .then(summary => {
-              // UI is already updated during streaming
-              console.log('Summary generation completed successfully');
-            })
-            .catch(error => {
-              summaryElements.content.textContent = `Error: ${error}`;
-            });
+        if (summaryTitle && summaryContent) {
+          summaryTitle.textContent = `Summarizing: ${youtubeInfo.title.substring(0, 50)}${youtubeInfo.title.length > 50 ? '...' : ''}`;
+          summaryContent.textContent = 'Generating video summary...';
+
+          fetchVideoSummary(youtubeInfo, { title: summaryTitle, content: summaryContent })
+            .then(() => console.log('Summary generation completed successfully'))
+            .catch(error => { summaryContent.textContent = `Error: ${error}`; });
         }
       }
-      // Also try to open the sidebar
-      // tryOpenSidebar();
-    } else {
-      // Standard approach for non-YouTube pages
-      tryOpenSidebar();
     }
   });
-
 
   // Add the button to the actions div
   actionsDiv.appendChild(button);
 }
-
-
 
 // Global function to try multiple methods of opening sidebar
 function tryOpenSidebar() {
@@ -1128,42 +1201,61 @@ function getYouTubeVideoId() {
   return urlParams.get('v');
 }
 
-// Add the button to the page
-// We'll try to add it to any page, not just YouTube
-// The function will handle whether to place it in the actions div or as a floating button
-createFloatingButton();
+async function manageSummaryButton() {
+  const button = document.getElementById('ai-chat-sidebar-button');
+  const summaryBox = document.getElementById('chat-box-video-summary');
 
-// Observer to detect when actions div is added to the DOM (for dynamic pages)
-const observer = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    if (mutation.type === 'childList') {
-      const actionsDiv = document.getElementById('actions');
-      const topLevelButtonsComputedDiv = document.getElementById('top-level-buttons-computed');
-      const existingButton = document.getElementById('ai-chat-sidebar-button');
-
-      // If actions div exists but our button doesn't exist in it
-      if (actionsDiv && topLevelButtonsComputedDiv && (!existingButton || !actionsDiv.contains(existingButton))) {
-        // Remove any existing button first
-        if (existingButton) {
-          existingButton.remove();
+  if (isYouTubePage()) {
+    if (!summaryBox) {
+      const secondaryDiv = await waitForElement('#secondary-inner');
+      if (secondaryDiv) {
+        const summaryElements = createVideoSummary();
+        if (secondaryDiv.firstChild) {
+          secondaryDiv.insertBefore(summaryElements.container, secondaryDiv.firstChild);
+        } else {
+          secondaryDiv.appendChild(summaryElements.container);
         }
-        createFloatingButton();
-        break;
       }
     }
+    if (!button) {
+      createFloatingButton();
+    }
+  } else {
+    if (button) {
+      button.remove();
+    }
+    if (summaryBox) {
+      summaryBox.remove();
+    }
   }
+}
+
+// This observer ensures the button is added when the target elements (#actions) appear dynamically.
+const observer = new MutationObserver(() => {
+  manageSummaryButton();
 });
 
-// Start observing the document
-observer.observe(document.body, {
-  childList: true,
-  subtree: true
-});
+// Main initialization logic
+function init() {
+  // We only care about youtube.
+  if (!window.location.hostname.includes('youtube.com')) {
+    return;
+  }
+  
+  // Initial check
+  manageSummaryButton();
 
-// Also add button when DOM is fully loaded to ensure it's added
-document.addEventListener('DOMContentLoaded', () => {
-  createFloatingButton();
-});
+  // Re-check on YouTube's specific navigation event
+  window.addEventListener('yt-navigate-finish', manageSummaryButton);
+
+  // Start observing for dynamic content changes
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+}
+
+init();
 
 // Listen for messages from the extension
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

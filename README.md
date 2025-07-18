@@ -2,22 +2,48 @@
 <img width="214" alt="Screenshot 2025-06-07 at 11 50 22" src="https://github.com/user-attachments/assets/3ed1045a-9bf0-46b5-bf15-677cb7076d02" />
 </div>
 
+<div align="center">
+    <a href="https://chromewebstore.google.com/detail/chat-box-chat-with-all-ai/hhaaoibkigonnoedcocnkehipecgdodm" target="_blank">
+       <img src="https://img.shields.io/badge/Chrome%20Web%20Store-Chat%20Box-red?style=for-the-badge&logo=chromewebstore&logoColor=white" alt="Chrome Web Store" />
+    </a>
+    <a href="https://github.com/MinhxThanh/Chat-Box" target="_blank">
+       <img src="https://img.shields.io/badge/GitHub-Chat%20Box-black?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" />
+    </a>
+    <a href="https://w404.net/">
+       <img src="https://img.shields.io/badge/Web-W404.NET-purple?style=for-the-badge&logo=w404&logoColor=white" alt="W404" />
+    </a>
+</div>
+
 ---
+
 <div align="center">
   <img width="1095" alt="Chat Box Description Image" src="https://github.com/user-attachments/assets/2cd01baf-ba5c-46c9-995a-323fdc7bd2fb" />
 </div>
 
 ***Chat Box*** is a browser extension that streamlines your online experience by integrating AI chat, advanced web search, document interaction, and more into a convenient sidebar.
 
+## What's New
+
+- **Shortcut Key**: Access the sidebar quickly with `Cmd/Ctrl + E`.
+    - Edit Shortcut in `chrome://extensions/shortcuts`
+- **Text Selection**: Highlight text on any webpage to automatically use it as context in your chat.
+- **Custom Prompts**: Create, manage, and use your own custom prompts for repetitive tasks.
+- **Improved YouTube Integration**: Enjoy more robust and functional interactions with YouTube videos.
+- **UI Enhancements**: Experience a refreshed and more intuitive settings interface.
+- **Bug Fixes**: Squashed a bug related to chat history to improve reliability.
+
 ## Key Features
 
 Chat Box offers a rich set of functionalities to streamline your AI interactions and information gathering:
 
 -   **🌙 Modern Dark UI**: Sleek and intuitive interface built with Shadcn UI and Tailwind CSS.
+-   **⚡️ Quick Access Shortcut**: Open the sidebar instantly with `Cmd/Ctrl + E`.
 -   **💬 AI Chat**: Engage in conversations with various AI models directly from the sidebar.
--   **📚 Chat History**: Easily access and manage multiple past conversations.
--   **⚙️ Flexible API Configuration**:
-    -   Configure API keys and endpoints for various AI providers.
+-   **📝 Contextual Text Selection**: Highlight text on any website to use it as context in your chat.
+-   **✨ Custom Prompts**: Create and save your own custom prompts for quick reuse.
+-   **📚 Improved Chat History**: Easily access and manage multiple past conversations with improved reliability.
+-   **⚙️ Flexible API Configuration & Refreshed UI**:
+    -   Configure API keys and endpoints for various AI providers in a more intuitive settings panel.
     -   Supports major providers like **OpenAI, DeepSeek, Claude (Anthropic), Groq**, as well as **Local LLMs (via Ollama)** and **Custom OpenAI-compatible endpoints**.
     -   Load and select from available AI models from your configured provider.
 -   **🚀 Advanced Web Search & Scraping**:
@@ -32,7 +58,7 @@ Chat Box offers a rich set of functionalities to streamline your AI interactions
     -   View document context (name, size, estimated tokens) directly in the chat interface.
 -   **🖼️ Multimedia & Contextual Awareness**:
     -   Upload images to include in your conversations with AI models that support vision.
-    -   **📺 YouTube Video Chat**: Detects YouTube video pages to provide contextual chat options about the video content.
+    -   **📺 Enhanced YouTube Integration**: Get summaries, ask questions, and interact with YouTube videos more effectively.
 -   **🔒 Secure Local Storage**: Your API credentials and conversations are stored securely in your browser's local storage.
 
 ## Installation
@@ -78,7 +104,7 @@ Chat Box offers a rich set of functionalities to streamline your AI interactions
 
 ### Using with Local LLMs (e.g., Ollama)
 
-You can configure Chat Box to work with local LLMs like those served by Ollama.
+You can configure Chat Box to work with local LLMs like those served by [Ollama](https://ollama.com/).
 
 1.  **Run your Ollama server**:
     Open your terminal and run the following command. This makes Ollama accessible to the extension.
@@ -96,24 +122,15 @@ You can configure Chat Box to work with local LLMs like those served by Ollama.
     -   Click "Load Models" to see models available from your Ollama instance.
 
 
-## To-Do Plan
-
-- [x] Add custom provider
-- [x] Improve search
-- [x] Improve UI when chat with image
-- [x] Improve store history chat
-- [ ] Public to Chrome Web Store
-- [ ] Chat support file pdf
-- [ ] Better generate chat title
-- [ ] Using on Firefox
-- [ ] Custom UI
-...
-
 ## Technologies Used
 
--   React
--   Tailwind CSS
--   Shadcn UI
--   Chrome Extension APIs (Manifest V3)
--   Firecrawl API (for web search/scraping)
--   Jina AI API (for web search/scraping)
+-   **Core Framework**: React
+-   **Bundler & Compiler**: Webpack, Babel
+-   **UI & Styling**: Tailwind CSS, Shadcn UI, Radix UI, Lucide React
+-   **Browser Extension**: Chrome Extension APIs (Manifest V3)
+-   **Local Database**: Dexie (IndexedDB)
+
+
+## License
+
+This project is licensed under the GPL-3.0 license - see the [LICENSE](LICENSE) file for details.

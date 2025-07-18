@@ -14,6 +14,31 @@
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
   }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary));
+    border-radius: 3px;
+  }
+
+  /* Custom blockquote styling */
+  blockquote {
+    border-left: 4px solid hsl(var(--primary) / 0.5);
+    background-color: hsl(var(--muted) / 0.5);
+    padding: 0.5rem 1rem;
+    margin: 0.5rem 0;
+    border-radius: 0.25rem;
+    font-style: italic;
+    color: hsl(var(--muted-foreground));
+  }
 }
 
 /* Textarea styling */
@@ -63,7 +88,9 @@ pre code {
  
 @layer base {
   :root {
-    --background: 240 10% 3.9%;
+    --ai-background: 300 3% 8%;
+    /* --background: 240 10% 3.9%; */
+    --background: 240 3% 7%;
     --foreground: 0 0% 98%;
     
     --card: 240 10% 3.9%;
@@ -73,7 +100,8 @@ pre code {
     --popover-foreground: 0 0% 98%;
     
     /* Updated primary color to be more vibrant blue */
-    --primary: 253 83% 66%;
+    --primary: 249 40% 54%;
+    /* --primary: 253 83% 66%; */
     /* --primary: 240, 28%, 50%; */
     --primary-foreground: 0 0% 100%;
     

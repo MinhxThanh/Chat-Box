@@ -9,6 +9,8 @@ import ApiKeyForm from '../components/ApiKeyForm';
 import { getAllConversations, saveConversation, deleteConversation } from '../utils/db';
 import "../globals.css";
 import { Settings, PlusCircle, X, Save, Loader2, Trash2, History, Plus, MoveLeft, ArrowLeftFromLine, Minus } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
+import CustomPrompts from '../components/CustomPrompts';
 
 // Import provider icons
 import OpenAIIcon from '../../assets/providers/OpenAI.svg';
@@ -31,7 +33,10 @@ const safeToString = (value) => {
   }
 };
 
+
+
 const Sidebar = () => {
+
   const { showAlert } = useNotification();
   // States for the sidebar UI and settings
   const [activeView, setActiveView] = useState('chat'); // 'chat', 'settings', 'history'
@@ -78,13 +83,21 @@ const Sidebar = () => {
 
   // Load conversations from IndexedDB on mount
   useEffect(() => {
-    (async () => {
+    const loadConvs = async () => {
+      setIsConversationsLoading(true);
       try {
         const all = await getAllConversations();
         if (all && all.length > 0) {
-          setConversations(all);
-          setActiveConversation(all[0].id);
+          // Sort conversations by timestamp in ID, descending (newest first)
+          const sortedConvs = all.sort((a, b) => {
+            const timeA = parseInt(a.id.split('-')[1] || 0, 10);
+            const timeB = parseInt(b.id.split('-')[1] || 0, 10);
+            return timeB - timeA; // Sorts from newest to oldest
+          });
+          setConversations(sortedConvs);
+          setActiveConversation(sortedConvs[0].id); // Set the newest one as active
         } else {
+          // If no conversations exist, create a new default one
           const defaultConv = { id: `conv-${Date.now()}`, title: 'New Conversation', messages: [] };
           setConversations([defaultConv]);
           setActiveConversation(defaultConv.id);
@@ -92,10 +105,12 @@ const Sidebar = () => {
         }
       } catch (err) {
         console.error('Failed to load conversations from IndexedDB', err);
+        showAlert('Error', 'Error loading conversations. Please refresh the extension.');
       } finally {
         setIsConversationsLoading(false);
       }
-    })();
+    };
+    loadConvs();
   }, []);
 
   // Persist every conversation change to IndexedDB
@@ -112,7 +127,7 @@ const Sidebar = () => {
   useEffect(() => {
     // Save to localStorage for web access
     localStorage.setItem('aiChatSettings', JSON.stringify(settings));
-    
+
     // Also save to chrome.storage.local for content script access
     if (chrome.storage && chrome.storage.local) {
       try {
@@ -134,17 +149,17 @@ const Sidebar = () => {
   // Function to load available models from the API
   const loadModels = async () => {
     const selectedProvider = getSelectedProvider();
-    
+
     if (!selectedProvider) {
       showAlert('Provider Required', 'Please select a provider first');
       return;
     }
-    
+
     if (!selectedProvider.apiKey) {
       showAlert('API Key Required', 'Please enter your API key first');
       return;
     }
-    
+
     // For custom provider, ensure endpoint is set
     if ((selectedProvider.provider === 'custom' || selectedProvider.provider === 'local') && (!selectedProvider.endpoint)) {
       showAlert('Endpoint Required', 'Please enter the API endpoint for your custom or local provider.');
@@ -154,7 +169,7 @@ const Sidebar = () => {
     setLoading(true);
     try {
       const endpoint = selectedProvider.endpoint;
-      
+
       // This is a simplified example - actual endpoint might be different based on the AI provider
       const response = await fetch(`${endpoint}/models`, {
         headers: {
@@ -168,14 +183,14 @@ const Sidebar = () => {
       }
 
       const data = await response.json();
-      
+
       // Extract models from response (format varies by provider)
       const models = data.data || data.models || [];
 
       // Find the current provider by ID instead of the selectedProvider flag
       // This ensures we update the correct provider even if selection changes
       const providerType = selectedProvider.provider;
-      
+
       // Update only the specific provider with the models, preserving all other providers
       const updatedProviders = settings.providers.map(provider => {
         if (provider.provider === providerType) {
@@ -218,9 +233,9 @@ const Sidebar = () => {
       messages: []
     };
 
-    const newList = [...conversations, newConversation];
-  setConversations(newList);
-  saveConversation(newConversation);
+    const newList = [newConversation, ...conversations];
+    setConversations(newList);
+    saveConversation(newConversation);
     setActiveConversation(newId);
     setActiveView('chat');
   };
@@ -276,10 +291,10 @@ const Sidebar = () => {
     const selectProvider = (providerType) => {
       // Make a deep copy of the current providers to prevent modifying the original array
       const newProviders = settings.providers ? JSON.parse(JSON.stringify(settings.providers)) : [];
-      
+
       // Check if this provider already exists
       const existingIndex = newProviders.findIndex(p => p.provider === providerType);
-      
+
       // If it exists, just select it
       if (existingIndex >= 0) {
         // Mark only this provider as selected but preserve all providers' data
@@ -297,12 +312,12 @@ const Sidebar = () => {
           apiKey: "",
           models: []
         };
-        
+
         // Deselect all existing providers but keep their data
         newProviders.forEach(p => p.selectedProvider = false);
         newProviders.push(newProvider);
       }
-      
+
       // Update settings with the new providers array
       // This preserves the previously configured providers
       setSettings({
@@ -314,14 +329,14 @@ const Sidebar = () => {
     // Update current provider's API key
     const updateProviderApiKey = (apiKey) => {
       if (!selectedProvider) return;
-      
+
       const newProviders = settings.providers.map(p => {
         if (p.selectedProvider) {
-          return {...p, apiKey};
+          return { ...p, apiKey };
         }
         return p;
       });
-      
+
       setSettings({
         ...settings,
         providers: newProviders
@@ -331,14 +346,14 @@ const Sidebar = () => {
     // Update provider's endpoint (for custom and local)
     const updateProviderEndpoint = (endpoint) => {
       if (!selectedProvider || (selectedProvider.provider !== 'custom' && selectedProvider.provider !== 'local')) return;
-      
+
       const newProviders = settings.providers.map(p => {
         if (p.selectedProvider) {
-          return {...p, endpoint};
+          return { ...p, endpoint };
         }
         return p;
       });
-      
+
       setSettings({
         ...settings,
         providers: newProviders
@@ -370,168 +385,191 @@ const Sidebar = () => {
             <X className="h-5 w-5" />
           </Button>
         </div>
-  
-        <div className="space-y-5">
-          {/* Provider Selection */}
-          <div className="space-y-2">
-            <Label>Provider</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {predefinedProviders.map((provider) => (
-                <div
-                  key={provider.provider}
-                  className={`p-2 rounded-md cursor-pointer border flex items-center justify-center gap-2 ${selectedProvider?.provider === provider.provider ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
-                  onClick={() => selectProvider(provider.provider)}
-                >
-                  <img src={provider.icon} alt="" className="w-5 h-5" />
-                  <span>{provider.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-  
-          {/* API Key for all providers */}
-          <div className="space-y-2">
-            <Label htmlFor="apiKey">API Key</Label>
-            <Input
-              id="apiKey"
-              type="password"
-              value={selectedProvider?.apiKey || ''}
-              onChange={(e) => updateProviderApiKey(e.target.value)}
-              placeholder={selectedProvider?.provider === 'local' ? 'API Key (default: no-key)' : `Enter your ${selectedProvider?.name || 'provider'} API key`}
-            />
-          </div>
-  
-          {/* Endpoint (for custom and local providers) */}
-          {(selectedProvider?.provider === 'custom' || selectedProvider?.provider === 'local') && (
-            <div className="space-y-2">
-              <Label htmlFor="endpoint">API Endpoint</Label>
-              <Input
-                id="endpoint"
-                type="text"
-                value={selectedProvider?.endpoint || ''}
-                onChange={(e) => updateProviderEndpoint(e.target.value)}
-                placeholder={selectedProvider?.provider === 'local' ? 'http://localhost:1234/v1' : 'https://api.example.com/v1'}
-              />
-            </div>
-          )}
-  
-          {/* Models Section */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label>Models</Label>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadProviderModels}
-                disabled={loading || !selectedProvider?.apiKey}
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Load Models
-              </Button>
-            </div>
-  
-            {/* Add function to remove a model from the list */}
-            {(() => {
-              // Function to remove a model from the current provider's list
-              const removeModel = (modelToRemove) => {
-                if (!selectedProvider) return;
-                
-                const newProviders = settings.providers.map(p => {
-                  if (p.selectedProvider) {
-                    return {
-                      ...p,
-                      models: p.models.filter(model => model !== modelToRemove)
-                    };
-                  }
-                  return p;
-                });
-                
-                // If we're removing the currently selected model, deselect it
-                let newSelectedModel = settings.selectedModel;
-                if (settings.selectedModel === modelToRemove) {
-                  newSelectedModel = null;
-                }
-                
-                setSettings({
-                  ...settings,
-                  providers: newProviders,
-                  selectedModel: newSelectedModel
-                });
-              };
-              
-              return selectedProvider?.models?.length > 0 ? (
-                <div className="grid grid-cols-1 gap-2 mt-2">
-                  {selectedProvider.models.map((model) => (
+        <Tabs defaultValue="providers" className="w-full">
+          <TabsList className="w-full">
+            <TabsTrigger value="providers">Providers</TabsTrigger>
+            <TabsTrigger value="search">Search</TabsTrigger>
+            <TabsTrigger value="prompts">Prompts</TabsTrigger>
+          </TabsList>
+          {/* Providers configuration */}
+          <TabsContent value="providers">
+            <div className="space-y-5">
+              {/* Provider Selection */}
+              <div className="space-y-2">
+                <h2 className="text-xl font-bold mb-4 text-gray-100">Provider Configuration</h2>
+                <Label>Provider</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {predefinedProviders.map((provider) => (
                     <div
-                      key={safeToString(model)}
-                      className={`p-2 rounded-md border flex justify-between items-center ${settings.selectedModel === model ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
+                      key={provider.provider}
+                      className={`p-2 rounded-md cursor-pointer border flex items-center justify-center gap-2 ${selectedProvider?.provider === provider.provider ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
+                      onClick={() => selectProvider(provider.provider)}
                     >
-                      <div 
-                        className="flex-1 cursor-pointer truncate"
-                        onClick={() => selectModel(model)}
-                      >
-                        {safeToString(model)}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 ml-2 hover:bg-destructive hover:text-destructive-foreground rounded-full"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeModel(model);
-                        }}
-                      >
-                        <Minus className="h-3.5 w-3.5" />
-                      </Button>
+                      <img src={provider.icon} alt="" className="w-5 h-5" />
+                      <span>{provider.name}</span>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div className="text-muted-foreground text-sm">No models loaded. Click 'Load Models' to fetch available models.</div>
-              );
-            })()}
-            
-          </div>
-  
-          <Button 
-            onClick={() => {
-              // Only validate the current provider
-              const provider = getSelectedProvider();
-              
-              // Only validate if there's a current provider
-              if (provider) {
-                // Only validate the provider if it has data - if it has no API key, 
-                // we'll still save it but it won't be usable
-                if (provider.apiKey && provider.provider === 'custom' && !provider.endpoint) {
-                  showAlert('Endpoint Required', 'Please enter an endpoint for your custom provider.');
-                  return;
-                }
-              }
-              
-              // Filter out any providers with no API key before saving
-              const providersToSave = settings.providers.filter(p => p.apiKey);
-              
-              if (providersToSave.length === 0) {
-                showAlert('Provider Required', 'Please configure at least one provider with an API key before saving.');
-                return;
-              }
-              
-              // Save the settings while keeping all configured providers
-              localStorage.setItem('aiChatSettings', JSON.stringify(settings));
-              
-              showAlert('Success', 'Provider settings and models saved!', 
-                () => setActiveView('chat'));
-            }} 
-            className="w-full mt-4"
-          >
-            <Save className="h-4 w-4 mr-2" /> Save Settings
-          </Button>
-        </div>
+              </div>
 
-         {/* Form enter Custom Web Search Engine API*/}
-         <div className="mt-8 pt-4 border-t border-border">
-           <ApiKeyForm />
-         </div>
+              {/* API Key for all providers */}
+              <div className="space-y-2">
+                <Label htmlFor="apiKey">API Key</Label>
+                <Input
+                  id="apiKey"
+                  type="password"
+                  value={selectedProvider?.apiKey || ''}
+                  onChange={(e) => updateProviderApiKey(e.target.value)}
+                  placeholder={selectedProvider?.provider === 'local' ? 'API Key (default: no-key)' : `Enter your ${selectedProvider?.name || 'provider'} API key`}
+                />
+              </div>
+
+              {/* Endpoint (for custom and local providers) */}
+              {(selectedProvider?.provider === 'custom' || selectedProvider?.provider === 'local') && (
+                <div className="space-y-2">
+                  <Label htmlFor="endpoint">API Endpoint</Label>
+                  <Input
+                    id="endpoint"
+                    type="text"
+                    value={selectedProvider?.endpoint || ''}
+                    onChange={(e) => updateProviderEndpoint(e.target.value)}
+                    placeholder={selectedProvider?.provider === 'local' ? 'http://localhost:11434/v1' : 'https://api.example.com/v1'}
+                  />
+                </div>
+              )}
+
+              {/* Models Section */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label>Models</Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={loadProviderModels}
+                    disabled={loading || !selectedProvider?.apiKey}
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Load Models
+                  </Button>
+                </div>
+
+                {/* Add function to remove a model from the list */}
+                {(() => {
+                  // Function to remove a model from the current provider's list
+                  const removeModel = (modelToRemove) => {
+                    if (!selectedProvider) return;
+
+                    const newProviders = settings.providers.map(p => {
+                      if (p.selectedProvider) {
+                        return {
+                          ...p,
+                          models: p.models.filter(model => model !== modelToRemove)
+                        };
+                      }
+                      return p;
+                    });
+
+                    // If we're removing the currently selected model, deselect it
+                    let newSelectedModel = settings.selectedModel;
+                    if (settings.selectedModel === modelToRemove) {
+                      newSelectedModel = null;
+                    }
+
+                    setSettings({
+                      ...settings,
+                      providers: newProviders,
+                      selectedModel: newSelectedModel
+                    });
+                  };
+
+                  return selectedProvider?.models?.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-2 mt-2 overflow-y-auto scrollbar-thin pr-2 max-h-[300px]">
+                      {selectedProvider.models.map((model) => (
+                        <div
+                          key={safeToString(model)}
+                          className={`p-2 rounded-md border flex justify-between items-center ${settings.selectedModel === model ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
+                        >
+                          <div
+                            className="flex-1 cursor-pointer truncate"
+                            onClick={() => selectModel(model)}
+                          >
+                            {safeToString(model)}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 ml-2 hover:bg-destructive hover:text-destructive-foreground rounded-full"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeModel(model);
+                            }}
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-muted-foreground text-sm">No models loaded. Click 'Load Models' to fetch available models.</div>
+                  );
+                })()}
+
+              </div>
+
+              <Button
+                onClick={() => {
+                  // Only validate the current provider
+                  const provider = getSelectedProvider();
+
+                  // Only validate if there's a current provider
+                  if (provider) {
+                    // Only validate the provider if it has data - if it has no API key, 
+                    // we'll still save it but it won't be usable
+                    if (provider.apiKey && provider.provider === 'custom' && !provider.endpoint) {
+                      showAlert('Endpoint Required', 'Please enter an endpoint for your custom provider.');
+                      return;
+                    }
+                  }
+
+                  // Filter out any providers with no API key before saving
+                  const providersToSave = settings.providers.filter(p => p.apiKey);
+
+                  if (providersToSave.length === 0) {
+                    showAlert('Provider Required', 'Please configure at least one provider with an API key before saving.');
+                    return;
+                  }
+
+                  // Save the settings while keeping all configured providers
+                  localStorage.setItem('aiChatSettings', JSON.stringify(settings));
+
+                  showAlert('Success', 'Provider settings and models saved!',
+                    () => setActiveView('chat'));
+                }}
+                className="w-full mt-4"
+              >
+                <Save className="h-4 w-4 mr-2" /> Save Settings
+              </Button>
+            </div>
+          </TabsContent>
+
+          {/* Search configure */}
+          <TabsContent value="search">
+            {/* Form enter Custom Web Search Engine API*/}
+            <div className="mt-2">
+              <ApiKeyForm />
+            </div>
+          </TabsContent>
+
+          {/* Prompts configure */}
+          <TabsContent value="prompts">
+            {/* Form enter Custom Web Search Engine API*/}
+            <div className="mt-2">
+              <CustomPrompts />
+            </div>
+          </TabsContent>
+
+        </Tabs>
+
       </div>
     );
   };
@@ -558,24 +596,27 @@ const Sidebar = () => {
   };
 
   // Function to confirm deletion
-  const confirmDeleteConversation = () => {
+  const confirmDeleteConversation = async () => {
     const { conversationId } = deleteDialogState;
     if (!conversationId) return;
 
-    // Filter out the conversation to delete
-    const updatedConversations = conversations.filter(c => c.id !== conversationId);
-    setConversations(updatedConversations);
+    try {
+      await deleteConversation(conversationId);
+      const updatedConversations = conversations.filter(c => c.id !== conversationId);
+      setConversations(updatedConversations);
 
-    // If we're deleting the active conversation, switch to another one
-    if (activeConversation === conversationId) {
-      setActiveConversation(updatedConversations[0].id);
+      if (activeConversation === conversationId) {
+        setActiveConversation(updatedConversations[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to delete conversation:', err);
+      showAlert('Error', 'Failed to delete conversation.');
+    } finally {
+      setDeleteDialogState({
+        isOpen: false,
+        conversationId: null
+      });
     }
-
-    // Close the dialog
-    setDeleteDialogState({
-      isOpen: false,
-      conversationId: null
-    });
   };
 
   // Function to rename a conversation
@@ -591,15 +632,15 @@ const Sidebar = () => {
     // Ensure conversationId is a string and use a fallback if not.
     // This prevents errors with .substring() and ensures a usable ID.
     const displayShortId = (typeof conversationId === 'string' && conversationId.length > 0)
-                           ? conversationId.substring(0, 6) // Takes first 6 chars, or fewer if id is shorter.
-                           : 'xxxxxx'; // Fallback for null, undefined, non-string, or empty string conversationId.
+      ? conversationId.substring(0, 6) // Takes first 6 chars, or fewer if id is shorter.
+      : 'xxxxxx'; // Fallback for null, undefined, non-string, or empty string conversationId.
 
     const fallbackTitle = `Conversation ${displayShortId}`;
-    
+
     if (!messages || messages.length === 0) {
       return "New Conversation"; // Changed to return 'New Conversation' for new chats
     }
-    
+
     // Added 'm &&' to safely access m.role, preventing errors if m is null/undefined in the array.
     const firstAIMessage = messages.find(m => m && m.role === 'assistant');
     if (!firstAIMessage) {
@@ -609,7 +650,7 @@ const Sidebar = () => {
       }
       return fallbackTitle;
     }
-    
+
     let textContent = '';
     // Added 'firstAIMessage.content &&' to ensure content exists before checking if it's an array or string.
     if (firstAIMessage.content && Array.isArray(firstAIMessage.content)) {
@@ -622,28 +663,28 @@ const Sidebar = () => {
       textContent = firstAIMessage.content;
     }
     // If content is not an array or string, or is missing, textContent remains '', which is handled below.
-    
+
     if (!textContent || textContent.trim() === '') {
       const userMessage = messages.find(m => m && m.role === 'user');
       // Added 'userMessage.content &&' and 'item &&' for robustness.
-      if (userMessage && userMessage.content && Array.isArray(userMessage.content) && 
-          userMessage.content.some(item => item && item.type === 'image_url')) {
+      if (userMessage && userMessage.content && Array.isArray(userMessage.content) &&
+        userMessage.content.some(item => item && item.type === 'image_url')) {
         return `Image Chat ${displayShortId}`;
       }
       return `AI Chat ${displayShortId}`; // Ensured displayShortId is used here.
     }
-    
+
     let title = textContent.split('\n')[0];
     title = title.split('.')[0];
-    
+
     title = title.replace(/[#*`_[\]]/g, '').trim();
-    
+
     if (title.length > 30) {
       title = title.substring(0, 27) + '...';
     } else if (title.trim() === '') {
       return fallbackTitle; // Use the main fallback if processed title is empty.
     }
-    
+
     return `${title} [${displayShortId}]`;
   };
 
@@ -666,7 +707,7 @@ const Sidebar = () => {
       </Button>
 
       <div className="space-y-2">
-        {[...conversations].reverse().map((conversation) => (
+        {conversations.map((conversation) => (
           <div
             key={`history-${safeToString(conversation.id)}`}
             className={`p-3 rounded-md ${safeToString(activeConversation) === safeToString(conversation.id) ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
@@ -754,16 +795,16 @@ const Sidebar = () => {
             title = textPart.text;
           }
         }
-        
+
         if (title) {
           // Truncate title to a reasonable length
           conversationToUpdate.title = title.substring(0, 50);
         }
       }
     }
-    
-    setConversations(prevConversations => 
-      prevConversations.map(c => 
+
+    setConversations(prevConversations =>
+      prevConversations.map(c =>
         c.id === conversationToUpdate.id ? conversationToUpdate : c
       )
     );
@@ -798,66 +839,47 @@ const Sidebar = () => {
         <main className="flex-1 overflow-hidden relative z-10 bg-background">
           {activeView === 'chat' && (
             <Chat
-              key={currentConversation.id}
+              conversation={currentConversation}
+              onUpdateConversation={handleUpdateConversation}
+              onNewConversation={createNewChat}
+              provider={settings.selectedProvider}
               apiKey={(() => {
-                // Find the provider that owns the selected model
                 if (settings.selectedModel) {
-                  // Find which provider has this model
-                  const providerWithModel = settings.providers.find(provider => 
-                    provider.models && provider.models.includes(settings.selectedModel)
-                  );
-                  
-                  // If found, use that provider's API key
-                  if (providerWithModel) {
-                    return providerWithModel.apiKey;
-                  }
+                  const providerWithModel = settings.providers.find(p => p.models?.includes(settings.selectedModel));
+                  if (providerWithModel) return providerWithModel.apiKey;
                 }
-                
-                // Fallback to selected provider
                 return getSelectedProvider()?.apiKey || '';
               })()}
               endpoint={(() => {
-                // Find the provider that owns the selected model
                 if (settings.selectedModel) {
-                  // Find which provider has this model
-                  const providerWithModel = settings.providers.find(provider => 
-                    provider.models && provider.models.includes(settings.selectedModel)
-                  );
-                  
-                  // If found, use that provider's endpoint
-                  if (providerWithModel) {
-                    return providerWithModel.endpoint;
-                  }
+                  const providerWithModel = settings.providers.find(p => p.models?.includes(settings.selectedModel));
+                  if (providerWithModel) return providerWithModel.endpoint;
                 }
-                
-                // Fallback to selected provider
                 return getSelectedProvider()?.endpoint || '';
               })()}
               model={settings.selectedModel}
+              temperature={settings.temperature}
+              maxTokens={settings.maxTokens}
+              contextWindow={settings.contextWindow}
+
               availableModels={(() => {
-                // Create an object with models from all providers that have API keys
                 const modelsMap = {};
-                
-                // Loop through all providers
                 settings.providers.forEach(provider => {
-                  // Only include providers with API keys and models
                   if (provider.apiKey && provider.models && provider.models.length > 0) {
                     modelsMap[provider.name] = provider.models;
                   }
                 });
-                
-                // If no providers have models, fall back to the current provider
                 if (Object.keys(modelsMap).length === 0) {
-                  modelsMap[getSelectedProvider()?.name || 'Default'] = getSelectedProvider()?.models || [];
+                  const selectedProvider = getSelectedProvider();
+                  if (selectedProvider) {
+                    modelsMap[selectedProvider.name || 'Default'] = selectedProvider.models || [];
+                  }
                 }
-                
                 return modelsMap;
               })()}
               onModelChange={(newModel) => {
                 setSettings({ ...settings, selectedModel: newModel });
               }}
-              conversation={currentConversation}
-              onUpdateConversation={handleUpdateConversation}
             />
           )}
           {activeView === 'settings' && renderSettingsView()}
@@ -871,7 +893,7 @@ const Sidebar = () => {
           <X className="h-4 w-4" />
         </Button>
         <hr />
-      
+
         <Button
           variant={activeView === 'history' ? "default" : "ghost"}
           size="icon"

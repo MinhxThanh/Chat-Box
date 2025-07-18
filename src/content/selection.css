@@ -1,0 +1,15 @@
+.chatbox-selection-dot {
+  position: absolute;
+  width: 8px; /* w-2 */
+  height: 8px; /* h-2 */
+  background-color: #8060F0;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 99999;
+  display: none; /* Hidden by default */
+  transition: transform 0.1s ease-in-out;
+}
+
+.chatbox-selection-dot:hover {
+  transform: scale(1.5);
+}

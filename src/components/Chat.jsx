@@ -5,10 +5,25 @@ import { Send, Loader2, Plus, Image, FileText, X, Globe, Square } from "lucide-r
 import { extractTextFromDocument, DocumentContext } from "./DocumentProcessor";
 import { YouTubeContext } from "./YouTubeContext";
 import { WELCOME_MESSAGE } from "../utils/prompts";
+import { getAllPrompts } from '../db/promptDb';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { saveImage, getImage } from "../utils/db";
 
-export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversation, availableModels, onModelChange }) => {
+export const Chat = ({
+  conversation,
+  onUpdateConversation,
+  onNewConversation,
+  provider,
+  apiKey,
+  endpoint,
+  model,
+  temperature,
+  maxTokens,
+  contextWindow,
+
+  availableModels,
+  onModelChange
+}) => {
   const [messages, setMessages] = useState(
     conversation?.messages?.length > 0
       ? conversation.messages
@@ -33,36 +48,50 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
   // YouTube content state
   const [youtubeInfo, setYoutubeInfo] = useState(null);
   const [blockYoutubeDetection, setBlockYoutubeDetection] = useState(false);
+  const [initialSystemMessage, setInitialSystemMessage] = useState(null);
+  const [showPrompts, setShowPrompts] = useState(false);
+  const [prompts, setPrompts] = useState([]);
+  const [filteredPrompts, setFilteredPrompts] = useState([]);
+  const [selectedPromptIndex, setSelectedPromptIndex] = useState(0);
+
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      const allPrompts = await getAllPrompts();
+      setPrompts(allPrompts);
+    };
+    fetchPrompts();
+  }, []);
+  const [selectedText, setSelectedText] = useState(null);
   const [firstMessageSent, setFirstMessageSent] = useState(false);
-  
+
   // Clear YouTube context and block re-detection
   const clearYoutubeContext = useCallback(() => {
     // First clear the YouTube info from state
     setYoutubeInfo(null);
-    
+
     // Block YouTube detection permanently until page reload or explicit re-enable
     setBlockYoutubeDetection(true);
-    
+
     // Filter out YouTube-related system messages and add confirmation message
     setMessages(prev => {
       // Remove YouTube detection messages
-      const filteredMessages = prev.filter(msg => 
-        !(msg.role === 'system' && 
-          (msg.content.includes('YouTube video detected:') || 
-           msg.content.includes('Ask questions about this video'))));
-      
+      const filteredMessages = prev.filter(msg =>
+        !(msg.role === 'system' &&
+          (msg.content.includes('YouTube video detected:') ||
+            msg.content.includes('Ask questions about this video'))));
+
       // Add clearing confirmation message
       return [
         ...filteredMessages,
         { role: "system", content: "YouTube video context cleared." }
       ];
     });
-    
+
     // Also clear from session storage if it exists
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('youtubeVideoContext');
     }
-    
+
     console.log('YouTube detection blocked after clearing');
   }, [setMessages]);
   // Scraped URL content state
@@ -147,16 +176,16 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
     if (blockYoutubeDetection) {
       return;
     }
-    
+
     // Only try to get YouTube content if we don't already have it
     // and not tied to conversation.id to avoid re-fetching on new chat if tab is same
     if (!youtubeInfo && typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
         if (tabs[0] && tabs[0].id) { // Ensure tab and tab.id exist
           chrome.tabs.sendMessage(
             tabs[0].id,
             { action: "getPageContent" },
-            function(response) {
+            function (response) {
               if (chrome.runtime.lastError) {
                 // console.warn("Error sending message to content script (YouTube check):", chrome.runtime.lastError.message);
                 return;
@@ -165,15 +194,15 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
                 console.log('Detected YouTube video, loading context:', response);
                 setYoutubeInfo(response);
                 setMessages(prev => {
-                    // Avoid duplicate system messages about YouTube detection
-                    const hasYouTubeMessage = prev.some(msg => msg.role === 'system' && msg.content.startsWith('YouTube video detected:'));
-                    if (!hasYouTubeMessage) {
-                       return [
-                           ...prev,
-                           { role: "system", content: `YouTube video detected: "${response.title}". Ask questions about this video!` }
-                       ];
-                    }
-                    return prev;
+                  // Avoid duplicate system messages about YouTube detection
+                  const hasYouTubeMessage = prev.some(msg => msg.role === 'system' && msg.content.startsWith('YouTube video detected:'));
+                  if (!hasYouTubeMessage) {
+                    return [
+                      ...prev,
+                      { role: "system", content: `YouTube video detected: "${response.title}". Ask questions about this video!` }
+                    ];
+                  }
+                  return prev;
                 });
               }
             }
@@ -198,7 +227,7 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
           (conversation?.messages || []).filter(msg => msg.role !== 'system' ||
             (msg.role === 'system' && !msg.content.startsWith('Welcome to the Chat Box!')))
         );
-  
+
         if (currentMessagesJSON !== conversationMessagesJSON) {
           onUpdateConversation({ ...conversation, messages });
         }
@@ -209,6 +238,22 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
       clearTimeout(handler);
     };
   }, [messages, onUpdateConversation, conversation]);
+
+  useEffect(() => {
+    const handleMessage = (message, sender, sendResponse) => {
+      if (message.type === 'SET_SELECTED_TEXT') {
+        setTimeout(() => {
+          setSelectedText(message.text);
+        }, 700);
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+    };
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -249,35 +294,35 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
   const scrapeUrlContent = async (url) => {
     try {
       setIsScrapingUrl(true);
-      setMessages(prev => [...prev, {role: "system", content: `Preparing to scrape web page: ${url}...`}]);
+      setMessages(prev => [...prev, { role: "system", content: `Preparing to scrape web page: ${url}...` }]);
       const validUrl = url.startsWith('http') ? url : `http://${url}`;
-      
+
       // Import search utilities
       const { getSearchEngineConfig, scrapeWebpage } = await import('../utils/searchUtils');
       const searchConfig = await getSearchEngineConfig();
-      
+
       // Check if a custom search engine is configured
       if (!searchConfig || (searchConfig.engine !== 'firecrawl' && searchConfig.engine !== 'jina') || !searchConfig.apiKey) {
         setIsScrapingUrl(false);
-        setMessages(prev => [...prev, {role: "system", content: `⚠️ No custom search engine configured for web scraping. Please configure Firecrawl or Jina in the settings.`}]);
+        setMessages(prev => [...prev, { role: "system", content: `⚠️ No custom search engine configured for web scraping. Please configure Firecrawl or Jina in the settings.` }]);
         return { success: false, error: 'No custom search engine configured for web scraping. Please configure Firecrawl or Jina in the settings.' };
       }
-      
+
       // Update scraping message to show which engine is being used
       setMessages(prev => [
         ...prev.filter(m => !(m.role === 'system' && m.content.startsWith('Preparing to scrape'))),
-        {role: "system", content: `Scraping web page using ${searchConfig.engine}: ${url}...`}
+        { role: "system", content: `Scraping web page using ${searchConfig.engine}: ${url}...` }
       ]);
-      
+
       console.log(`Using ${searchConfig.engine} to scrape URL:`, validUrl);
-      
+
       // Use the configured search engine to scrape the webpage
       const scrapedContent = await scrapeWebpage(validUrl, { formats: ["markdown", "text"] });
-      
+
       // Handle different API response structures
       let content = '';
       let title = url;
-      
+
       if (searchConfig.engine === 'firecrawl') {
         console.log('Firecrawl scrape response:', scrapedContent);
         // Firecrawl typically returns data with markdown field
@@ -310,7 +355,7 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
           const dataObj = scrapedContent.data;
           if (dataObj.content) {
             content = dataObj.content;
-          } else if (typeof dataObj.text === 'string') { 
+          } else if (typeof dataObj.text === 'string') {
             content = dataObj.text;
           } else if (dataObj.markdown) {
             content = dataObj.markdown;
@@ -344,11 +389,11 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
           }
         }
       }
-      
+
       if (!content || content.trim() === '') {
         throw new Error(`${searchConfig.engine} returned empty content for ${validUrl}`);
       }
-      
+
       // Process the content for the UI
       setScrapedUrlContent({ url: validUrl, title, content });
       const chunkSize = 3000; // Increased chunk size for better context
@@ -409,28 +454,28 @@ export const Chat = ({ apiKey, endpoint, model, conversation, onUpdateConversati
       ]);
     }
   };
-  
+
   // Enhanced function to get AI-suggested search query
   const getAISuggestedSearchQuery = async (userInput, conversationHistory) => {
     if (!apiKey || !endpoint) {
-        console.warn("API key or endpoint not configured for AI search suggestion.");
-        return null;
+      console.warn("API key or endpoint not configured for AI search suggestion.");
+      return null;
     }
 
     const relevantHistory = conversationHistory
-        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-        .slice(-4) 
-        .map(msg => {
-            let contentText = "";
-            if (typeof msg.content === 'string') {
-                contentText = msg.content;
-            } else if (Array.isArray(msg.content)) {
-                const textPart = msg.content.find(part => part.type === 'text');
-                contentText = textPart ? textPart.text : '[non-text content]';
-            }
-            return `${msg.role}: ${contentText.substring(0, 150)}${contentText.length > 150 ? '...' : ''}`;
-        })
-        .join('\n');
+      .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+      .slice(-4)
+      .map(msg => {
+        let contentText = "";
+        if (typeof msg.content === 'string') {
+          contentText = msg.content;
+        } else if (Array.isArray(msg.content)) {
+          const textPart = msg.content.find(part => part.type === 'text');
+          contentText = textPart ? textPart.text : '[non-text content]';
+        }
+        return `${msg.role}: ${contentText.substring(0, 150)}${contentText.length > 150 ? '...' : ''}`;
+      })
+      .join('\n');
 
     const prompt = `Your task is to refine a user's search query based on their latest input and recent conversation.
 User's Latest Query: "${userInput}"
@@ -455,77 +500,77 @@ Refined Search Query (your entire response):`;
       : `${endpoint}/chat/completions`;
 
     try {
-        const modelToUse = model || "gpt-3.5-turbo"; 
-        const response = await fetch(completionUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: modelToUse,
-                messages: messagesForAISuggestion,
-                max_tokens: 70, // Slightly more tokens in case query is long
-                temperature: 0.1, // Very low temperature for deterministic query output
-                stream: false 
-            })
-        });
+      const modelToUse = model || "Default";
+      const response = await fetch(completionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          messages: messagesForAISuggestion,
+          max_tokens: 70, // Slightly more tokens in case query is long
+          temperature: 0.1, // Very low temperature for deterministic query output
+          stream: false
+        })
+      });
 
-        const data = await response.json();
+      const data = await response.json();
 
-        if (data.error) {
-            console.error("Error getting AI suggested search query:", data.error.message);
-            setMessages(prev => [...prev, {role: "system", content: `⚠️ AI query analysis error: ${data.error.message}. Using original query.`}]);
-            return null;
-        }
-
-        let suggestedQuery = data.choices?.[0]?.message?.content?.trim();
-        
-        if (suggestedQuery) {
-            // If AI gives a multi-line response, try to get the last non-empty line.
-            const lines = suggestedQuery.split('\n');
-            const lastNonEmptyLine = lines.filter(line => line.trim() !== '').pop();
-            if (lastNonEmptyLine) {
-                suggestedQuery = lastNonEmptyLine.trim();
-            }
-            
-            // Remove common unwanted prefixes (case-insensitive)
-            const prefixesToRemove = [
-                "refined search query:", "improved search query:", 
-                "suggested search query:", "search query:", "query:",
-                "here's the refined query:", "here is the refined query:",
-                "here's the suggested query:", "here is the suggested query:",
-                "here's the query:", "here is the query:",
-                "i suggest searching for:", "try searching for:"
-            ];
-            for (const prefix of prefixesToRemove) {
-                if (suggestedQuery.toLowerCase().startsWith(prefix)) {
-                    suggestedQuery = suggestedQuery.substring(prefix.length).trim();
-                }
-            }
-
-            // Remove leading/trailing quotes
-            if ((suggestedQuery.startsWith('"') && suggestedQuery.endsWith('"')) ||
-                (suggestedQuery.startsWith("'") && suggestedQuery.endsWith("'"))) {
-                suggestedQuery = suggestedQuery.substring(1, suggestedQuery.length - 1);
-            }
-            
-            // Remove trailing punctuation that isn't typically part of a search query
-            suggestedQuery = suggestedQuery.replace(/[.,;!?]$/, '');
-
-            // If the cleaning results in an empty string, it's better to return null (original query will be used)
-            if (!suggestedQuery.trim()) {
-                return null;
-            }
-
-            return suggestedQuery;
-        }
+      if (data.error) {
+        console.error("Error getting AI suggested search query:", data.error.message);
+        setMessages(prev => [...prev, { role: "system", content: `⚠️ AI query analysis error: ${data.error.message}. Using original query.` }]);
         return null;
+      }
+
+      let suggestedQuery = data.choices?.[0]?.message?.content?.trim();
+
+      if (suggestedQuery) {
+        // If AI gives a multi-line response, try to get the last non-empty line.
+        const lines = suggestedQuery.split('\n');
+        const lastNonEmptyLine = lines.filter(line => line.trim() !== '').pop();
+        if (lastNonEmptyLine) {
+          suggestedQuery = lastNonEmptyLine.trim();
+        }
+
+        // Remove common unwanted prefixes (case-insensitive)
+        const prefixesToRemove = [
+          "refined search query:", "improved search query:",
+          "suggested search query:", "search query:", "query:",
+          "here's the refined query:", "here is the refined query:",
+          "here's the suggested query:", "here is the suggested query:",
+          "here's the query:", "here is the query:",
+          "i suggest searching for:", "try searching for:"
+        ];
+        for (const prefix of prefixesToRemove) {
+          if (suggestedQuery.toLowerCase().startsWith(prefix)) {
+            suggestedQuery = suggestedQuery.substring(prefix.length).trim();
+          }
+        }
+
+        // Remove leading/trailing quotes
+        if ((suggestedQuery.startsWith('"') && suggestedQuery.endsWith('"')) ||
+          (suggestedQuery.startsWith("'") && suggestedQuery.endsWith("'"))) {
+          suggestedQuery = suggestedQuery.substring(1, suggestedQuery.length - 1);
+        }
+
+        // Remove trailing punctuation that isn't typically part of a search query
+        suggestedQuery = suggestedQuery.replace(/[.,;!?]$/, '');
+
+        // If the cleaning results in an empty string, it's better to return null (original query will be used)
+        if (!suggestedQuery.trim()) {
+          return null;
+        }
+
+        return suggestedQuery;
+      }
+      return null;
 
     } catch (error) {
-        console.error("Network error in getAISuggestedSearchQuery:", error);
-        setMessages(prev => [...prev, {role: "system", content: `⚠️ Network error during AI query analysis: ${error.message}. Using original query.`}]);
-        return null;
+      console.error("Network error in getAISuggestedSearchQuery:", error);
+      setMessages(prev => [...prev, { role: "system", content: `⚠️ Network error during AI query analysis: ${error.message}. Using original query.` }]);
+      return null;
     }
   };
 
@@ -568,16 +613,16 @@ Refined Search Query (your entire response):`;
         const MAX_CHUNK_SIZE = 3000; // characters
         let formattedTranscript = "";
         if (!transcriptText || transcriptText.trim() === "" || transcriptText === "Transcript not available." || transcriptText === "Transcripts are disabled for this video." || transcriptText === "No transcript found for this video." || transcriptText === "Could not retrieve transcript.") {
-            formattedTranscript = transcriptText; // Keep error/empty messages as is
+          formattedTranscript = transcriptText; // Keep error/empty messages as is
         } else if (transcriptText.length <= MAX_CHUNK_SIZE) {
-            formattedTranscript = transcriptText;
+          formattedTranscript = transcriptText;
         } else {
-            const numChunks = Math.ceil(transcriptText.length / MAX_CHUNK_SIZE);
-            const chunksArray = [];
-            for (let i = 0; i < transcriptText.length; i += MAX_CHUNK_SIZE) {
-                chunksArray.push(transcriptText.substring(i, i + MAX_CHUNK_SIZE));
-            }
-            formattedTranscript = chunksArray.map((chunk, index) => `Transcript Chunk ${index + 1}/${numChunks}:\n${chunk}`).join("\n\n");
+          const numChunks = Math.ceil(transcriptText.length / MAX_CHUNK_SIZE);
+          const chunksArray = [];
+          for (let i = 0; i < transcriptText.length; i += MAX_CHUNK_SIZE) {
+            chunksArray.push(transcriptText.substring(i, i + MAX_CHUNK_SIZE));
+          }
+          formattedTranscript = chunksArray.map((chunk, index) => `Transcript Chunk ${index + 1}/${numChunks}:\n${chunk}`).join("\n\n");
         }
 
         let youtubeContext = `System Note: The user is likely asking about the YouTube video titled "${youtubeInfo.title}".
@@ -600,10 +645,10 @@ Consider this YouTube video context when responding.`;
 
       const filteredMessages = messagesWithContext.map(msg => {
         if (msg.role !== 'user' || !Array.isArray(msg.content)) return msg;
-        
+
         const hasBlobImage = msg.content.some(item => item.type === 'image_url' && item.image_url?.url?.startsWith('blob:'));
         if (!hasBlobImage) return msg; // No blob image, return as is
-        
+
         // If there's a blob image, only keep text parts for history to avoid sending blob URLs
         const textParts = msg.content.filter(item => item.type === 'text');
         if (textParts.length > 0) {
@@ -626,7 +671,7 @@ Consider this YouTube video context when responding.`;
       );
 
 
-      const modelToUse = model || "gpt-3.5-turbo"; // Default model
+      const modelToUse = model || "Default"; // Default model
       const requestPayload = {
         ...(modelToUse && { model: modelToUse }),
         messages: filteredMessages,
@@ -634,7 +679,7 @@ Consider this YouTube video context when responding.`;
         temperature: 0.5,
         stream: true
       };
-      
+
       // console.log("API Request Payload (Streaming):", JSON.stringify(requestPayload, null, 2));
       const response = await fetch(completionUrl, {
         method: "POST",
@@ -673,7 +718,7 @@ Consider this YouTube video context when responding.`;
     try {
       setIsLoading(true); // Should already be true, but ensure
       setIsStreaming(true); // Mark that we're actively streaming
-      
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -709,12 +754,12 @@ Consider this YouTube video context when responding.`;
       if (error.name !== 'AbortError') {
         // Update the last message with an error, or add a new system error message
         setMessages(prev => {
-            const lastMsg = prev[prev.length -1];
-            if(lastMsg && lastMsg.role === 'assistant' && lastMsg.content === accumulatedContent){ // If stream ended mid-way
-                lastMsg.content += `\n[Error reading full stream: ${error.message}]`;
-                return [...prev];
-            }
-            return [...prev, {role: "system", content: `Error processing stream: ${error.message}`}];
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === accumulatedContent) { // If stream ended mid-way
+            lastMsg.content += `\n[Error reading full stream: ${error.message}]`;
+            return [...prev];
+          }
+          return [...prev, { role: "system", content: `Error processing stream: ${error.message}` }];
         });
       } else {
         // For abort errors, just update the UI to show streaming was stopped
@@ -751,7 +796,7 @@ Consider this YouTube video context when responding.`;
         !(msg.role === "system" && msg.content.startsWith("⚠️ Network error during AI query analysis"))
       );
 
-      const modelToUse = model || "gpt-3.5-turbo";
+      const modelToUse = model || "Default";
       // console.log("API Request Payload (Regular Fallback):", JSON.stringify({ model: modelToUse, messages: filteredMessages, max_tokens: 2000, temperature: 0.7 }, null, 2));
       const response = await fetch(completionUrl, {
         method: "POST",
@@ -860,6 +905,50 @@ Consider this YouTube video context when responding.`;
     });
   };
 
+  const handlePromptSelect = (prompt) => {
+    setInput(prompt.prompt);
+    setShowPrompts(false);
+    textareaRef.current.focus();
+  };
+
+  const handleKeyDown = (e) => {
+    if (showPrompts && filteredPrompts.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedPromptIndex(prevIndex => (prevIndex + 1) % filteredPrompts.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedPromptIndex(prevIndex => (prevIndex - 1 + filteredPrompts.length) % filteredPrompts.length);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (selectedPromptIndex >= 0 && selectedPromptIndex < filteredPrompts.length) {
+          handlePromptSelect(filteredPrompts[selectedPromptIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowPrompts(false);
+      }
+    } else if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setInput(value);
+
+    if (value.startsWith('/')) {
+      const searchTerm = value.substring(1).toLowerCase();
+      const filtered = prompts.filter(p => p.command && p.command.toLowerCase().includes(searchTerm));
+      setFilteredPrompts(filtered);
+      setShowPrompts(filtered.length > 0);
+      setSelectedPromptIndex(0); // Reset index on new filter
+    } else {
+      setShowPrompts(false);
+    }
+  };
+
   // Clean up object URLs when component unmounts or when uploadedImageUrl changes
   useEffect(() => {
     const currentUrl = uploadedImageUrl;
@@ -875,31 +964,31 @@ Consider this YouTube video context when responding.`;
       // Check for custom search engine configuration first
       const { getSearchEngineConfig, performSearch } = await import('../utils/searchUtils');
       const searchConfig = await getSearchEngineConfig();
-      
+
       // If a custom search engine (firecrawl or jina) is configured with an API key
       if (searchConfig && (searchConfig.engine === 'firecrawl' || searchConfig.engine === 'jina') && searchConfig.apiKey) {
         try {
           console.log(`Using ${searchConfig.engine} search engine for query:`, queryToSearch);
           const customSearchResults = await performSearch(queryToSearch, { limit: 5 });
-          
+
           // Format the results to match the expected structure
           let formattedResults = [];
-          
+
           // Handle different API response structures
           if (searchConfig.engine === 'firecrawl') {
             // Handle Firecrawl response structure
             // Results are in data array for Firecrawl
             const resultsArray = customSearchResults.data || [];
-            
+
             formattedResults = resultsArray.map(item => {
               // Create a processed content with chunks from markdown
               let processedContent = '';
               const markdown = item.markdown || '';
-              
+
               // Split markdown into manageable chunks if it's long
               const contentChunks = [];
               const chunkSize = 1000;
-              
+
               if (markdown.length > chunkSize) {
                 for (let i = 0; i < markdown.length; i += chunkSize) {
                   contentChunks.push(markdown.substring(i, i + chunkSize));
@@ -909,7 +998,7 @@ Consider this YouTube video context when responding.`;
               } else {
                 processedContent = markdown;
               }
-              
+
               return {
                 title: item.title || item.metadata?.title || item.url,
                 url: item.url || item.metadata?.sourceURL,
@@ -919,21 +1008,21 @@ Consider this YouTube video context when responding.`;
               };
             });
             console.log('Firecrawl search results processed:', formattedResults.length);
-            
+
           } else if (searchConfig.engine === 'jina') {
             // Handle Jina response structure
             // Results are in data array for Jina
             const resultsArray = customSearchResults.data || [];
-            
+
             formattedResults = resultsArray.map(item => {
               // Create a processed content with chunks
               let processedContent = '';
               const content = item.content || '';
-              
+
               // Split content into manageable chunks if it's long
               const contentChunks = [];
               const chunkSize = 1000;
-              
+
               if (content.length > chunkSize) {
                 for (let i = 0; i < content.length; i += chunkSize) {
                   contentChunks.push(content.substring(i, i + chunkSize));
@@ -943,7 +1032,7 @@ Consider this YouTube video context when responding.`;
               } else {
                 processedContent = content;
               }
-              
+
               return {
                 title: item.title || item.url,
                 url: item.url,
@@ -954,7 +1043,7 @@ Consider this YouTube video context when responding.`;
             });
             console.log('Jina search results processed:', formattedResults.length);
           }
-          
+
           return {
             results: formattedResults,
             queryUsed: queryToSearch,
@@ -966,13 +1055,13 @@ Consider this YouTube video context when responding.`;
           console.log('Falling back to default search...');
         }
       }
-      
+
       // Default search with DuckDuckGo if no custom engine or custom search failed
       // console.log('Searching the web with DuckDuckGo for:', queryToSearch);
       const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(queryToSearch)}`;
       const response = await fetch(searchUrl);
       if (!response.ok) {
-          throw new Error(`Search request failed: ${response.status} ${response.statusText}`);
+        throw new Error(`Search request failed: ${response.status} ${response.statusText}`);
       }
       const html = await response.text();
       const parser = new DOMParser();
@@ -1029,11 +1118,14 @@ Consider this YouTube video context when responding.`;
     // ... (rest of the code remains the same)
     const originalInputText = input.trim(); // Use this for logic, API, etc.
     
-    if (originalInputText === "" && !uploadedFile && !documentFile && !scrapedUrlContent && !youtubeInfo) { // No input at all
-        return;
+    // Prevent sending an empty message
+    if (originalInputText === "" && !selectedText && !uploadedFile && !documentFile && !scrapedUrlContent && !youtubeInfo) {
+      return;
     }
-    if (uploadedFile && uploadedFile.file.type.startsWith('image/') && originalInputText === "") {
-      setMessages(prev => [...prev, {role: "system", content: "Please add a text description or question when uploading an image."}]);
+
+    // Prevent sending an image without any text context
+    if (uploadedFile && uploadedFile.file.type.startsWith('image/') && originalInputText === "" && !selectedText) {
+      setMessages(prev => [...prev, { role: "system", content: "Please add a text description or question when uploading an image." }]);
       return;
     }
     
@@ -1042,25 +1134,36 @@ Consider this YouTube video context when responding.`;
     // Capture current messages state *before* adding the new user message for processStream
     const messagesBeforeThisSend = [...messages]; 
 
+    // 
+    const uiTextContent = originalInputText;
+    let apiTextContent = originalInputText;
+    if (selectedText) {
+      const formattedSelectedText = `\n\n[Selected Text]:\n${selectedText}`;
+      apiTextContent =
+        originalInputText
+          ? `${originalInputText}${formattedSelectedText}`
+          : `[Selected Text]:\n${selectedText}`;
+    }
+
     // --- Prepare User Message for UI and API ---
     let uiUserMessageContent;
     let apiUserMessageContent; // This will be used for the API call
 
     if (uploadedFile && uploadedFile.file.type.startsWith('image/') && uploadedImageBase64) {
         uiUserMessageContent = [
-            { type: "text", text: originalInputText },
+            { type: "text", text: uiTextContent },
             { type: "image_ref", imageId: uploadedFile.id }
         ];
         apiUserMessageContent = [ // For API
-            { type: "text", text: originalInputText },
+            { type: "text", text: apiTextContent },
             { type: "image_url", image_url: { url: uploadedImageBase64 } }
         ];
-    } else if (documentFile) { // If a document is primary context, text input might be about it
-        uiUserMessageContent = originalInputText;
-        apiUserMessageContent = originalInputText;
+    } else if (documentFile) { // If a document is primary context, text might be about it
+        uiUserMessageContent = uiTextContent;
+        apiUserMessageContent = apiTextContent;
     } else { // Simple text message or text with non-image file (handled by [File attached])
-        uiUserMessageContent = originalInputText + (uploadedFile ? `\n[File attached: ${uploadedFile.file.name}]` : "");
-        apiUserMessageContent = uiUserMessageContent;
+        uiUserMessageContent = uiTextContent + (uploadedFile ? `\n[File attached: ${uploadedFile.file.name}]` : "");
+        apiUserMessageContent = apiTextContent + (uploadedFile ? `\n[File attached: ${uploadedFile.file.name}]` : "");
     }
     
     const uiUserMessage = { role: "user", content: uiUserMessageContent };
@@ -1268,14 +1371,6 @@ Full web page content:\n${allChunksText}`;
     // setIsLoading(false); // isLoading is set to false inside processStream or after fallback
   };
 
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   const handleRedoMessage = async (messageToRedo) => {
     if (!apiKey || !endpoint) {
       setMessages(prev => [...prev, { role: "system", content: "Please set up API key and endpoint to regenerate response." }]);
@@ -1288,11 +1383,11 @@ Full web page content:\n${allChunksText}`;
     // Get all messages up to *but not including* the assistant message to redo.
     // The AI will then generate a new response based on this history.
     const historyForRedo = messages.slice(0, messageIndex);
-    
+
     // Check if the history is not empty and the last message is a user query or relevant context
     if (historyForRedo.length === 0) {
-        setMessages(prev => [...prev, {role: "system", content: "Cannot regenerate response without prior context."}]);
-        return;
+      setMessages(prev => [...prev, { role: "system", content: "Cannot regenerate response without prior context." }]);
+      return;
     }
 
     // Prepare messages for API, including active context
@@ -1300,9 +1395,9 @@ Full web page content:\n${allChunksText}`;
 
     // Add Scraped URL Context if available
     if (scrapedUrlContent && scrapedUrlChunks.length > 0) {
-        const allChunksText = scrapedUrlChunks.map(c => c.text).join("\n\n---\n\n");
-        const urlContextInfo = `System Note: The user is likely discussing the scraped web page "${scrapedUrlContent.title}" (${scrapedUrlContent.url}). Full web page content:\n\n${allChunksText}`;
-        messagesToSendToAPI.push({ role: "system", content: urlContextInfo });
+      const allChunksText = scrapedUrlChunks.map(c => c.text).join("\n\n---\n\n");
+      const urlContextInfo = `System Note: The user is likely discussing the scraped web page "${scrapedUrlContent.title}" (${scrapedUrlContent.url}). Full web page content:\n\n${allChunksText}`;
+      messagesToSendToAPI.push({ role: "system", content: urlContextInfo });
     }
 
     // TODO: Add other contexts like documentFile, uploadedImageBase64 if they should persist for redo
@@ -1315,60 +1410,60 @@ Full web page content:\n${allChunksText}`;
     const lastUserMessageIndex = historyForRedo.map(m => m.role).lastIndexOf('user');
 
     if (lastUserMessageIndex !== -1) {
-        const lastUserMessage = historyForRedo[lastUserMessageIndex];
-        if (typeof lastUserMessage.content === 'string') {
-            lastUserQuery = lastUserMessage.content;
-        } else if (Array.isArray(lastUserMessage.content)) {
-            lastUserQuery = lastUserMessage.content.filter(part => part.type === 'text').map(part => part.text).join(' ').trim();
-        }
+      const lastUserMessage = historyForRedo[lastUserMessageIndex];
+      if (typeof lastUserMessage.content === 'string') {
+        lastUserQuery = lastUserMessage.content;
+      } else if (Array.isArray(lastUserMessage.content)) {
+        lastUserQuery = lastUserMessage.content.filter(part => part.type === 'text').map(part => part.text).join(' ').trim();
+      }
     }
-    
+
     if (searchEnabled && lastUserQuery) {
-        let currentSearchSystemMessageForUI = `🧠 Re-analyzing your query with AI to improve search for: "${lastUserQuery}"...`;
-        setMessages(prev => [...prev, { role: "system", content: currentSearchSystemMessageForUI }]);
+      let currentSearchSystemMessageForUI = `🧠 Re-analyzing your query with AI to improve search for: "${lastUserQuery}"...`;
+      setMessages(prev => [...prev, { role: "system", content: currentSearchSystemMessageForUI }]);
 
-        const contextForAISuggestion = historyForRedo.slice(0, lastUserMessageIndex);
-        const aiSuggestedQuery = await getAISuggestedSearchQuery(lastUserQuery, contextForAISuggestion);
-        let queryToSearch = lastUserQuery;
+      const contextForAISuggestion = historyForRedo.slice(0, lastUserMessageIndex);
+      const aiSuggestedQuery = await getAISuggestedSearchQuery(lastUserQuery, contextForAISuggestion);
+      let queryToSearch = lastUserQuery;
 
-        if (aiSuggestedQuery && aiSuggestedQuery.toLowerCase().trim() !== lastUserQuery.toLowerCase().trim()) {
-            queryToSearch = aiSuggestedQuery.trim();
-            currentSearchSystemMessageForUI = `🔍 AI suggested re-search: "${queryToSearch}". Searching... (Original: "${lastUserQuery}")`;
-        } else {
-            currentSearchSystemMessageForUI = `✅ AI analysis complete. Re-searching for: "${lastUserQuery}"...`;
+      if (aiSuggestedQuery && aiSuggestedQuery.toLowerCase().trim() !== lastUserQuery.toLowerCase().trim()) {
+        queryToSearch = aiSuggestedQuery.trim();
+        currentSearchSystemMessageForUI = `🔍 AI suggested re-search: "${queryToSearch}". Searching... (Original: "${lastUserQuery}")`;
+      } else {
+        currentSearchSystemMessageForUI = `✅ AI analysis complete. Re-searching for: "${lastUserQuery}"...`;
+      }
+
+      setMessages(prev => { // Update the "Re-analyzing..." message in UI
+        const newMsgs = [...prev];
+        const lastMsgIdx = newMsgs.length - 1;
+        if (lastMsgIdx >= 0 && newMsgs[lastMsgIdx].role === 'system' && newMsgs[lastMsgIdx].content.startsWith("🧠 Re-analyzing")) {
+          newMsgs[lastMsgIdx].content = currentSearchSystemMessageForUI;
+          return newMsgs;
         }
+        return [...prev, { role: "system", content: currentSearchSystemMessageForUI }]; // Fallback
+      });
 
-        setMessages(prev => { // Update the "Re-analyzing..." message in UI
-            const newMsgs = [...prev];
-            const lastMsgIdx = newMsgs.length - 1;
-            if (lastMsgIdx >= 0 && newMsgs[lastMsgIdx].role === 'system' && newMsgs[lastMsgIdx].content.startsWith("🧠 Re-analyzing")) {
-                newMsgs[lastMsgIdx].content = currentSearchSystemMessageForUI;
-                return newMsgs;
-            }
-            return [...prev, { role: "system", content: currentSearchSystemMessageForUI }]; // Fallback
-        });
+      const searchResultsData = await searchWeb(queryToSearch);
 
-        const searchResultsData = await searchWeb(queryToSearch);
+      if (searchResultsData && searchResultsData.results && searchResultsData.results.length > 0) {
+        const searchResultsTextForAI = searchResultsData.results.map((result, index) =>
+          `[${index + 1}] ${result.title}\nURL: ${result.url}\nSnippet: ${result.snippet}${result.fullContent ? '\nContent: ' + result.fullContent : ''}`
+        ).join('\n\n');
 
-        if (searchResultsData && searchResultsData.results && searchResultsData.results.length > 0) {
-            const searchResultsTextForAI = searchResultsData.results.map((result, index) =>
-                `[${index + 1}] ${result.title}\nURL: ${result.url}\nSnippet: ${result.snippet}${result.fullContent ? '\nContent: ' + result.fullContent : ''}`
-            ).join('\n\n');
-            
-            const queryInfoMessageForUI = `✅ Found ${searchResultsData.results.length} results for "${searchResultsData.queryUsed}" (re-search).`;
-            setMessages(prev => [...prev, { role: "system", content: queryInfoMessageForUI }]);
+        const queryInfoMessageForUI = `✅ Found ${searchResultsData.results.length} results for "${searchResultsData.queryUsed}" (re-search).`;
+        setMessages(prev => [...prev, { role: "system", content: queryInfoMessageForUI }]);
 
-            const contextualInfoForAI = (aiSuggestedQuery && aiSuggestedQuery.toLowerCase().trim() !== lastUserQuery.toLowerCase().trim()) ?
-                `User's original query (for re-search): "${lastUserQuery}"\nAI suggested refined query (for re-search): "${queryToSearch}"\nFresh Search Results (re-search):\n${searchResultsTextForAI}` :
-                `Fresh Search Results for "${queryToSearch}" (re-search):\n${searchResultsTextForAI}`;
-            
-            messagesToSendToAPI.push({ role: "system", content: `System Note: The following are fresh search results based on the user's prior query.\n${contextualInfoForAI}` });
-        } else {
-            const queryUsedForNoResults = searchResultsData && searchResultsData.queryUsed ? searchResultsData.queryUsed : queryToSearch;
-            const noResultsMessageForUI = `ℹ️ No new results found for "${queryUsedForNoResults}" (re-search).`;
-            setMessages(prev => [...prev, { role: "system", content: noResultsMessageForUI }]);
-            messagesToSendToAPI.push({ role: "system", content: `System Note: A re-search was performed for "${queryUsedForNoResults}", but no new results were found.` });
-        }
+        const contextualInfoForAI = (aiSuggestedQuery && aiSuggestedQuery.toLowerCase().trim() !== lastUserQuery.toLowerCase().trim()) ?
+          `User's original query (for re-search): "${lastUserQuery}"\nAI suggested refined query (for re-search): "${queryToSearch}"\nFresh Search Results (re-search):\n${searchResultsTextForAI}` :
+          `Fresh Search Results for "${queryToSearch}" (re-search):\n${searchResultsTextForAI}`;
+
+        messagesToSendToAPI.push({ role: "system", content: `System Note: The following are fresh search results based on the user's prior query.\n${contextualInfoForAI}` });
+      } else {
+        const queryUsedForNoResults = searchResultsData && searchResultsData.queryUsed ? searchResultsData.queryUsed : queryToSearch;
+        const noResultsMessageForUI = `ℹ️ No new results found for "${queryUsedForNoResults}" (re-search).`;
+        setMessages(prev => [...prev, { role: "system", content: noResultsMessageForUI }]);
+        messagesToSendToAPI.push({ role: "system", content: `System Note: A re-search was performed for "${queryUsedForNoResults}", but no new results were found.` });
+      }
     }
     // --- End of Re-Search Logic ---
 
@@ -1377,7 +1472,7 @@ Full web page content:\n${allChunksText}`;
     if (streamResult.stream) {
       await processStream(streamResult.stream, historyForRedo); // Pass historyForRedo as the base for processStream
     } else {
-      setMessages(prev => [...prev, {role: "system", content: `Streaming failed: ${streamResult.error || 'Unknown error'}. Attempting regular response...`}]);
+      setMessages(prev => [...prev, { role: "system", content: `Streaming failed: ${streamResult.error || 'Unknown error'}. Attempting regular response...` }]);
       const regularResult = await fetchRegularResponse(messagesToSendToAPI);
       if (regularResult.error) {
         setMessages([...messagesToSendToAPI, { role: "system", content: `Error regenerating: ${regularResult.error}` }]); // Show error with full context that was sent
@@ -1396,11 +1491,11 @@ Full web page content:\n${allChunksText}`;
       : (typeof messageToEdit.content === 'string' ? messageToEdit.content : "");
 
     if (newContentString.trim() === originalTextContent.trim()) return; // No actual change
-    
+
     // Find the message index by matching role and either content or content array pattern
     const messageIndex = messages.findIndex(msg => {
       if (msg.role !== messageToEdit.role) return false;
-      
+
       // Handle both string and array content formats
       if (Array.isArray(msg.content) && Array.isArray(messageToEdit.content)) {
         // For complex content arrays, check if this is the same message object
@@ -1410,51 +1505,51 @@ Full web page content:\n${allChunksText}`;
       }
       return false;
     });
-    
+
     if (messageIndex === -1 || messageToEdit.role !== 'user') return;
 
     setIsLoading(true);
 
     // Create a copy of messages array
     const updatedMessages = [...messages];
-    
+
     // --- Prepare Updated User Message for UI and API ---
     let updatedUiUserMessage;
     let updatedApiUserMessageContent; // This will be the content for the API call
 
     if (Array.isArray(messageToEdit.content)) { // Editing a multi-part message (e.g., text + image)
-        const imageItems = messageToEdit.content.filter(item => item.type === 'image_url');
-        // For UI, keep existing image URL (could be blob or original if re-editing)
-        updatedUiUserMessage = {
-            ...messageToEdit,
-            content: [{ type: 'text', text: newContentString }, ...imageItems]
-        };
-        // For API, ensure base64 if image was originally uploaded
-        const apiImageItems = imageItems.map(img => {
-            // If this messageToEdit had a base64 version stored, use it.
-            return img;
-        });
-        updatedApiUserMessageContent = [{ type: 'text', text: newContentString }, ...apiImageItems];
-        
-        // Update in the updatedMessages array
-        updatedMessages[messageIndex] = updatedUiUserMessage;
+      const imageItems = messageToEdit.content.filter(item => item.type === 'image_url');
+      // For UI, keep existing image URL (could be blob or original if re-editing)
+      updatedUiUserMessage = {
+        ...messageToEdit,
+        content: [{ type: 'text', text: newContentString }, ...imageItems]
+      };
+      // For API, ensure base64 if image was originally uploaded
+      const apiImageItems = imageItems.map(img => {
+        // If this messageToEdit had a base64 version stored, use it.
+        return img;
+      });
+      updatedApiUserMessageContent = [{ type: 'text', text: newContentString }, ...apiImageItems];
+
+      // Update in the updatedMessages array
+      updatedMessages[messageIndex] = updatedUiUserMessage;
     } else { // Editing a simple text message
-        updatedUiUserMessage = { ...messageToEdit, content: newContentString };
-        updatedApiUserMessageContent = newContentString;
-        
-        // Update in the updatedMessages array
-        updatedMessages[messageIndex] = updatedUiUserMessage;
+      updatedUiUserMessage = { ...messageToEdit, content: newContentString };
+      updatedApiUserMessageContent = newContentString;
+
+      // Update in the updatedMessages array
+      updatedMessages[messageIndex] = updatedUiUserMessage;
     }
-    
+
     // Keep all messages up to and including the edited message
     const messagesToKeep = updatedMessages.slice(0, messageIndex + 1);
-    
+
     // Set the current messages to only include up to the edited message
     setMessages(messagesToKeep);
 
     // --- Build messages for API ---
     let messagesToSendToAPI = [...messagesToKeep].filter(msg => // Filter system messages as in handleSend
-        !(msg.role === "system" && msg.content.startsWith("Welcome to the Chat Box!")) // etc.
+      !(msg.role === "system" && msg.content.startsWith("Welcome to the Chat Box!")) // etc.
     );
 
     // Check if search is enabled, if so, perform a search before getting AI response
@@ -1465,7 +1560,7 @@ Full web page content:\n${allChunksText}`;
           ...prev,
           { role: "system", content: `🔍 Searching the web for information about: "${newContentString}"...` }
         ]);
-        
+
         // Add Document/URL Context if available (similar to handleSend)
         if (documentFile && documentContent?.chunks && documentContent.chunks[0]) {
           const chunk = documentContent.chunks[0];
@@ -1477,7 +1572,7 @@ Full web page content:\n${allChunksText}`;
           const allChunksText = scrapedUrlChunks.map(c => c.text).join("\n\n---\n\n");
           messagesToSendToAPI.push({ role: "system", content: `System Note: Scraped page "${scrapedUrlContent.title}" is active. Full Content:\n${allChunksText}` });
         }
-        
+
         // Generate a context-aware search query
         const aiSuggestedQuery = await getAISuggestedSearchQuery(newContentString, messagesToKeep.slice(0, messageIndex));
         let queryToSearch = newContentString;
@@ -1495,35 +1590,35 @@ Full web page content:\n${allChunksText}`;
             return [...prev, { role: "system", content: `🧠 Understanding context: Searching for "${queryToSearch}"` }];
           });
         }
-        
+
         // Perform web search with the enhanced query
         const searchResultsData = await searchWeb(queryToSearch);
-        
+
         if (searchResultsData.results && searchResultsData.results.length > 0) {
           // Format search results for API
-          const searchResultsText = searchResultsData.results.map((r, i) => `[${i+1}] ${r.title}\nURL: ${r.url}\nSnippet: ${r.snippet}\n${r?.fullContent ? `Content: ${r.fullContent}` : ''}`).join('\n\n');
-          
+          const searchResultsText = searchResultsData.results.map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\nSnippet: ${r.snippet}\n${r?.fullContent ? `Content: ${r.fullContent}` : ''}`).join('\n\n');
+
           // Add search results as system message for user to see
           const wasQueryEnhanced = queryToSearch !== newContentString;
-          const queryInfoMessage = wasQueryEnhanced ? 
-            `✅ Found ${searchResultsData.results.length} results for "${queryToSearch}"` : 
+          const queryInfoMessage = wasQueryEnhanced ?
+            `✅ Found ${searchResultsData.results.length} results for "${queryToSearch}"` :
             `✅ Found ${searchResultsData.results.length} results for your edited message`;
-            
+
           setMessages(prev => [
             ...prev,
             { role: "system", content: queryInfoMessage }
           ]);
-          
+
           // Add search context as a system message for the AI
-          const contextualInfo = wasQueryEnhanced ? 
+          const contextualInfo = wasQueryEnhanced ?
             `Note: The original user query "${newContentString}" was expanded to "${queryToSearch}" based on conversation context.` :
             '';
-            
+
           messagesToSendToAPI.push({
             role: "system",
             content: `You are provided with the following search results for the user's edited query. Use this information to provide a more accurate and up-to-date response.\n${contextualInfo}\n\n${searchResultsText}`
           });
-          
+
           // Also add a summary of recent conversation to help with context
           const recentMessages = messagesToKeep.slice(-6); // Last 6 messages for context
           if (recentMessages.length > 1) {
@@ -1539,7 +1634,7 @@ Full web page content:\n${allChunksText}`;
               }
               return null;
             }).filter(Boolean).join('\n');
-            
+
             // Add the conversation context to the messages for the API
             messagesToSendToAPI.push({
               role: "system",
@@ -1555,7 +1650,7 @@ Full web page content:\n${allChunksText}`;
         }
       } catch (error) {
         console.error('Error in search for edited message:', error);
-        
+
         // If there's an error in the search process, fallback to regular messaging
         setMessages(prev => [
           ...prev,
@@ -1563,13 +1658,13 @@ Full web page content:\n${allChunksText}`;
         ]);
       } finally {
         // Always add the edited user message to the API messages array
-        messagesToSendToAPI.push({role: "user", content: updatedApiUserMessageContent});
+        messagesToSendToAPI.push({ role: "user", content: updatedApiUserMessageContent });
       }
     } else {
       // Default: Add the edited user's message if not searching
-      messagesToSendToAPI.push({role: "user", content: updatedApiUserMessageContent});
+      messagesToSendToAPI.push({ role: "user", content: updatedApiUserMessageContent });
     }
-    
+
     // --- Fetch AI Response for the edited query ---
     try {
       // First try streaming with the modified messages that may include search results
@@ -1581,10 +1676,10 @@ Full web page content:\n${allChunksText}`;
       } else if (streamResult.error) {
         // If streaming fails with an error, try regular response
         console.log("Streaming failed, falling back to regular response");
-        setMessages(prev => [...prev, {role: "system", content: `Streaming failed: ${streamResult.error || 'Unknown error'}. Attempting regular response...`}]);
-        
+        setMessages(prev => [...prev, { role: "system", content: `Streaming failed: ${streamResult.error || 'Unknown error'}. Attempting regular response...` }]);
+
         const regularResult = await fetchRegularResponse(messagesToSendToAPI);
-        
+
         if (regularResult.error) {
           setMessages([
             ...messagesToKeep,
@@ -1712,7 +1807,7 @@ Full web page content:\n${allChunksText}`;
 
   return (
     <div className="flex flex-col h-full relative z-10 bg-background">
-      <div className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4 relative bg-background z-10 min-h-[200px]">
+      <div className="flex-1 overflow-y-auto no-scrollbar py-4 px-2 space-y-4 relative bg-background z-10 min-h-[200px]">
         {!firstMessageSent && messages.length === 1 && messages[0].role === 'system' && messages[0].content === WELCOME_MESSAGE && (
           <div className="absolute inset-0 flex items-center justify-center z-0 pointer-events-none">
             <div className="text-center text-muted-foreground">
@@ -1727,7 +1822,7 @@ Full web page content:\n${allChunksText}`;
             documentName={documentFile.name}
             documentContent={documentContent}
             totalChunks={documentContent.chunks?.length || 1}
-            
+
             onClearDocument={() => {
               setDocumentFile(null); setDocumentContent(null);
               setMessages(prev => [...prev.filter(msg => !(msg.role === 'system' && msg.content.startsWith('Document loaded:'))), { role: "system", content: "Document context cleared." }]);
@@ -1787,7 +1882,7 @@ Full web page content:\n${allChunksText}`;
             }
             const timestamp = message.timestamp || Date.now(); // Use a timestamp if available, else current time
             // const messageKey = `msg-${message.role}-${index}-${timestamp}-${contentPreview.replace(/\W/g, '')}`;
-             const messageKey = `msg-${message.role}-${index}-${timestamp}-${Math.random().toString(36).substring(2, 9)}`;
+            const messageKey = `msg-${message.role}-${index}-${timestamp}-${Math.random().toString(36).substring(2, 9)}`;
 
 
             if (message.role === "system") {
@@ -1801,7 +1896,7 @@ Full web page content:\n${allChunksText}`;
                 message={message}
                 isUser={message.role === "user"}
                 isStreaming={isLoading && index === messages.length - 1 && message.role === "assistant"}
-                onRedoMessage={message.role === "assistant" && index === messages.length -1 && !isLoading ? handleRedoMessage : undefined} // Only allow redo for last, non-streaming assistant message
+                onRedoMessage={message.role === "assistant" && index === messages.length - 1 && !isLoading ? handleRedoMessage : undefined} // Only allow redo for last, non-streaming assistant message
                 onEditMessage={message.role === "user" ? handleEditMessage : undefined}
                 isLatestUserMessage={message.role === "user" && index === lastUserMsgIndex && !isLoading} // Only allow edit if not loading
                 imageUrls={imageUrls}
@@ -1891,72 +1986,99 @@ Full web page content:\n${allChunksText}`;
         <div className="relative">
           <div id="chat-input" className="bg-card rounded-lg border border-input focus-within:ring-1 focus-within:ring-ring p-1 flex items-end">
             {/* File Upload Button & Dropdown */}
-             <div className="relative self-end mb-1.5 ml-1" ref={fileDropdownRef}>
-                <Button variant="ghost" size="icon" type="button" onClick={(e) => { e.stopPropagation(); setIsFileDropdownOpen(prev => !prev);}} className={`h-8 w-8 rounded-full ${isFileDropdownOpen ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`} title="Add files">
-                    <Plus className="h-4 w-4" />
-                    <span className="sr-only">Add Files</span>
-                </Button>
-                {isFileDropdownOpen && (
+            <div className="relative self-end mb-1.5 ml-1" ref={fileDropdownRef}>
+              <Button variant="ghost" size="icon" type="button" onClick={(e) => { e.stopPropagation(); setIsFileDropdownOpen(prev => !prev); }} className={`h-8 w-8 rounded-full ${isFileDropdownOpen ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`} title="Add files">
+                <Plus className="h-4 w-4" />
+                <span className="sr-only">Add Files</span>
+              </Button>
+              {isFileDropdownOpen && (
                 <div className="absolute bottom-full left-0 mb-2 w-56 bg-popover rounded-md shadow-lg border border-border z-50" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                    <div className="bg-muted px-3 py-2 border-b border-border flex justify-between items-center sticky top-0 z-10"><h4 className="text-xs font-medium">Upload Files</h4><Button variant="ghost" size="icon" className="h-5 w-5 p-0 hover:bg-destructive/20 rounded-full" onClick={() => setIsFileDropdownOpen(false)}><X className="h-3 w-3" /></Button></div>
-                    <div className="p-2 space-y-1">
+                  <div className="bg-muted px-3 py-2 border-b border-border flex justify-between items-center sticky top-0 z-10"><h4 className="text-xs font-medium">Upload Files</h4><Button variant="ghost" size="icon" className="h-5 w-5 p-0 hover:bg-destructive/20 rounded-full" onClick={() => setIsFileDropdownOpen(false)}><X className="h-3 w-3" /></Button></div>
+                  <div className="p-2 space-y-1">
                     <div>
-                        <input type="file" id="image-upload-input" accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'image')} />
-                        <Button variant="ghost" size="sm" className="w-full text-left flex items-center justify-start gap-2 hover:bg-accent h-8 text-popover-foreground" onClick={() => fileInputRef.current?.click()}><Image className="h-4 w-4 text-indigo-500" /><span className="text-xs">Upload Image</span></Button>
+                      <input type="file" id="image-upload-input" accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'image')} />
+                      <Button variant="ghost" size="sm" className="w-full text-left flex items-center justify-start gap-2 hover:bg-accent h-8 text-popover-foreground" onClick={() => fileInputRef.current?.click()}><Image className="h-4 w-4 text-indigo-500" /><span className="text-xs">Upload Image</span></Button>
                     </div>
                     <div>
-                        <input type="file" id="document-upload-input" accept=".txt,.doc,.docx,.html,.css,.js,.md,.json" className="hidden" onChange={(e) => handleFileUpload(e, 'document')} />
-                        <Button variant="ghost" size="sm" className="w-full text-left flex items-center justify-start gap-2 hover:bg-accent h-8 text-popover-foreground" onClick={() => document.getElementById('document-upload-input')?.click()} disabled={isProcessingDocument}>
+                      <input type="file" id="document-upload-input" accept=".txt,.doc,.docx,.html,.css,.js,.md,.json" className="hidden" onChange={(e) => handleFileUpload(e, 'document')} />
+                      <Button variant="ghost" size="sm" className="w-full text-left flex items-center justify-start gap-2 hover:bg-accent h-8 text-popover-foreground" onClick={() => document.getElementById('document-upload-input')?.click()} disabled={isProcessingDocument}>
                         {isProcessingDocument ? (<Loader2 className="h-4 w-4 text-emerald-500 animate-spin" />) : (<FileText className="h-4 w-4 text-emerald-500" />)}
                         <span className="text-xs">{isProcessingDocument ? 'Processing...' : 'Upload Document'}</span></Button>
                     </div>
                     {fileUploadError && (<div className="px-2 py-1.5 text-[11px] text-destructive bg-destructive/10 rounded-sm border border-destructive/30 leading-tight">{fileUploadError}</div>)}
-                    </div>
+                  </div>
                 </div>
-                )}
+              )}
             </div>
 
-            <div className="flex-1 relative mx-1"> {/* Textarea and uploaded file preview */}
+            {showPrompts && (
+                <div className="absolute bottom-full mb-3 w-full bg-[#171717] border border-gray-700 rounded-md shadow-lg z-10 max-h-60 overflow-y-auto transition-all duration-600 transform ease-in-out">
+                  <ul className="p-2 animate-in fade-in duration-500 gap-y-2 overflow-hidden">
+                    {filteredPrompts.map((p, index) => (
+                      <li key={p.id} onClick={() => handlePromptSelect(p)} className={`p-2 hover:bg-[#262626] rounded-sm cursor-pointer ${index === selectedPromptIndex ? 'bg-[#262626]' : ''}`}>
+                        <p className="font-semibold">{p.command}</p>
+                        <p className="text-sm text-gray-400">{p.title.substring(0, 70)}...</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+            <div className="flex-1 relative mx-1 overflow-hidden"> {/* Textarea and uploaded file preview */}
               {uploadedFile && (
-                  <div className="mx-1 px-2 py-1 bg-primary/10 rounded-md text-xs flex items-center gap-1 mb-1 border border-primary/20">
-                    {uploadedFile.file.type.startsWith('image/') && uploadedImageUrl ? (
-                        <img src={uploadedImageUrl} alt="preview" className="h-6 w-6 object-cover rounded-sm"/>
-                    ) : (
-                        <FileText className="h-4 w-4 text-primary shrink-0"/>
-                    )}
-                    <span className="truncate max-w-[150px] text-primary/80 text-[11px]" title={uploadedFile.file.name}>{uploadedFile.file.name}</span>
-                    <Button variant="ghost" size="icon" className="h-5 w-5 p-0 hover:bg-destructive/20 rounded-full ml-auto" onClick={() => {setUploadedFile(null); if(uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl); setUploadedImageUrl(null); setUploadedImageBase64(null);}}>
-                        <X className="h-3 w-3 text-destructive" />
+                <div className="mx-1 px-2 py-1 bg-primary/10 rounded-md text-xs flex items-center gap-1 mb-1 border border-primary/20">
+                  {uploadedFile.file.type.startsWith('image/') && uploadedImageUrl ? (
+                    <img src={uploadedImageUrl} alt="preview" className="h-6 w-6 object-cover rounded-sm" />
+                  ) : (
+                    <FileText className="h-4 w-4 text-primary shrink-0" />
+                  )}
+                  <span className="truncate max-w-[150px] text-primary/80 text-[11px]" title={uploadedFile.file.name}>{uploadedFile.file.name}</span>
+                  <Button variant="ghost" size="icon" className="h-5 w-5 p-0 hover:bg-destructive/20 rounded-full ml-auto" onClick={() => { setUploadedFile(null); if (uploadedImageUrl) URL.revokeObjectURL(uploadedImageUrl); setUploadedImageUrl(null); setUploadedImageBase64(null); }}>
+                    <X className="h-3 w-3 text-destructive" />
+                  </Button>
+                </div>
+              )}
+              {
+                selectedText && (
+                  <div className="group relative mx-1 px-2 py-1 bg-primary/10 rounded-md text-xs flex overflow-hidden items-center gap-1 mb-1 border border-primary/20 animate-in fade-in duration-500">
+                    <span className="truncate w-full text-primary/80 text-[11px] overflow-hidden" title={selectedText}>{selectedText.slice(0, 80)}...</span>
+                    <Button variant="ghost" size="icon" className="absolute top-1/2 -translate-y-1/2 right-1 h-5 w-5 p-0 hover:bg-destructive/20 rounded-full ml-auto opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => { setSelectedText(null); }}>
+                      <X classNam e="h-3 w-3 text-destructive" />
                     </Button>
                   </div>
-              )}
-              <textarea ref={textareaRef} placeholder="Message..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} className="w-full bg-transparent border-0 focus:outline-none focus:ring-0 py-2 px-2.5 min-h-[40px] max-h-[120px] resize-none overflow-y-auto no-scrollbar text-sm leading-relaxed" style={{ height: 'auto' }} rows={1} />
+                )
+              }
+            
+              <textarea ref={textareaRef} placeholder="Message..." value={input} onChange={handleInputChange} onKeyDown={handleKeyDown} className="w-full bg-transparent border-0 focus:outline-none focus:ring-0 py-2 px-2.5 min-h-[40px] max-h-[120px] resize-none overflow-y-auto no-scrollbar text-sm leading-relaxed" style={{ height: 'auto' }} rows={1} />
             </div>
 
             <div className="self-end mb-1.5 mr-1"> {/* Send Button */}
-                {isStreaming ? (
-                  <Button 
-                    onClick={stopStreamingResponse} 
-                    size="icon" 
-                    className="h-8 w-8 rounded-full bg-primary hover:bg-primary/80 transition-colors text-white" 
-                    title="Stop AI response">
-                    <Square className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button 
-                    onClick={handleSend} 
-                    disabled={isLoading || (!input.trim() && !uploadedFile && !documentFile && !scrapedUrlContent && !youtubeInfo)} 
-                    size="icon" 
-                    className="h-8 w-8 rounded-full bg-primary hover:bg-primary/80 transition-colors text-primary-foreground" 
-                    title="Send message">
-                    {isLoading ? (<Loader2 className="h-4 w-4 animate-spin" />) : (<Send className="h-4 w-4" />)}
-                  </Button>
-                )}
+              {isStreaming ? (
+                <Button
+                  onClick={stopStreamingResponse}
+                  size="icon"
+                  className="h-8 w-8 rounded-full bg-primary hover:bg-primary/80 transition-colors text-white"
+                  title="Stop AI response">
+                  <Square className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSend}
+                  disabled={isLoading || (!input.trim() && !selectedText && !uploadedFile && !documentFile && !scrapedUrlContent && !youtubeInfo)}
+                  size="icon"
+                  className="h-8 w-8 rounded-full bg-primary hover:bg-primary/80 transition-colors text-primary-foreground"
+                  title="Send message">
+                  {isLoading ? (<Loader2 className="h-4 w-4 animate-spin" />) : (<Send className="h-4 w-4" />)}
+                </Button>
+              )}
             </div>
           </div>
-           <div className="text-xs text-muted-foreground mt-1.5 text-right px-1">
-                {input.trim() ? 'Enter to send' : (textareaRef.current && textareaRef.current.value.includes('\n') ? '' : 'Shift+Enter for new line')}
-            </div>
+          <div className="text-xs text-muted-foreground mt-1.5 text-right px-1">
+            {showPrompts
+              ? (input.trim() ? 'Enter to select' : (textareaRef.current && textareaRef.current.value.includes('\n') ? '' : 'Type / to show prompts'))
+              : (input.trim() ? 'Enter to send' : (textareaRef.current && textareaRef.current.value.includes('\n') ? '' : 'Shift+Enter for new line'))
+            }
+          </div>
         </div>
       </div>
     </div>

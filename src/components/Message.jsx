@@ -4,6 +4,28 @@ import { Markdown } from "./Markdown";
 import { Copy, RefreshCw, Edit, Check, X, ChevronDown, ChevronUp } from "lucide-react";
 import { WELCOME_MESSAGE } from "../utils/prompts";
 
+const SelectedTextSnippet = ({ text }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const firstLine = text.split('\n')[0];
+  const isTruncated = firstLine.length < text.length;
+
+  return (
+    <div 
+      className="border border-primary/30 bg-primary/10 rounded-md text-xs text-primary/90 cursor-pointer"
+      onClick={() => setIsExpanded(!isExpanded)}
+    >
+      <div className="flex justify-between items-start gap-2">
+        <blockquote className="italic w-full">
+          {isExpanded ? text.split('\n').map((line, i) => <p key={i}>{line || ' '}</p>) : <p>{`> ${firstLine}${isTruncated ? '...' : ''}`}</p>}
+        </blockquote>
+        <div className="shrink-0 text-primary/70 pt-0.5">
+          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage, onEditMessage, isLatestUserMessage }) => {
   // Create a stable message ID to help React with keys
   const [messageId] = useState(() => `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
@@ -83,10 +105,10 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
     >
       <div
         className={cn(
-          "rounded-lg px-4 py-2 max-w-[80%] shadow-md",
+          "rounded-lg shadow-md",
           isUser
-            ? "bg-primary text-primary-foreground rounded-br-none"
-            : "bg-secondary text-secondary-foreground rounded-bl-none border border-secondary/30"
+            ? "px-4 py-2 max-w-[80%] bg-primary text-primary-foreground rounded-br-none"
+            : "w-full p-2 text-secondary-foreground mt-2 bg-ai-background"
         )}
       >
         {isUser ? (
@@ -106,79 +128,73 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
                     setEditedContent(textContent);
                   }}
                   className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
-                  title="Cancel"
+                  title="Cancel edit"
                 >
-                  <X size={16} />
+                  <X size={18} />
                 </button>
                 <button
                   onClick={handleEditSave}
                   className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
                   title="Save changes"
                 >
-                  <Check size={16} />
+                  <Check size={18} />
                 </button>
               </div>
             </div>
           ) : (
-            <div className="relative w-full">
-              {/* Display text content */}
-              <p className="text-sm whitespace-pre-wrap break-words">{displayMessage}</p>
-              
-              {/* Display image thumbnails if present */}
-              {hasImages && (
-                <div className="mt-2">
-                  {message.content.map((item, i) => {
-                    if (item.type === 'image_url') {
-                      return (
-                        <div key={`image-content-${i}`} className="mt-1 rounded overflow-hidden inline-block border border-primary/20">
-                          <img
-                            src={item.image_url.url}
-                            alt="Uploaded image"
-                            className="max-h-[150px] max-w-full object-cover"
-                          />
+            <div>
+              {message.selectedText && <SelectedTextSnippet text={message.selectedText} />}
+              {isContentArray ? (
+                // Handle array content with text and images
+                <>
+                  {message.content.filter(item => item.type === 'text').map((item, i) => (
+                    <div key={`text-part-${i}`}><Markdown content={item.text} /></div>
+                  ))}
+                  {message.content.filter(item => item.type === 'image_ref').map((item, i) => {
+                    const imageUrl = imageUrls[item.imageId];
+                    if (!imageUrl) return null;
+                    return (
+                      <div key={`img-part-${i}`} className="mt-2 mb-2">
+                        <div className="rounded overflow-hidden border border-primary/20">
+                          <img src={imageUrl} alt="User upload" className="max-h-[200px] max-w-full object-contain" />
                         </div>
-                      );
-                    }
-                    if (item.type === 'image_ref') {
-                      const refUrl = imageUrls[item.imageId];
-                      if (!refUrl) return null;
-                      return (
-                        <div key={`image-content-${i}`} className="mt-1 rounded overflow-hidden inline-block border border-primary/20">
-                          <img
-                            src={refUrl}
-                            alt="Uploaded image"
-                            className="max-h-[150px] max-w-full object-cover"
-                          />
-                        </div>
-                      );
-                    }
-                    return null;
+                      </div>
+                    );
                   })}
-                </div>
+                </>
+              ) : (
+                // Handle simple string content
+                textContent && <Markdown content={displayMessage} />
+              )}
+
+              {isLongMessage && (
+                <button 
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="text-xs text-primary-foreground/70 hover:underline mt-1"
+                >
+                  {isExpanded ? 'Show less' : 'Show more'}
+                </button>
               )}
               
-              <div className="flex items-center justify-end gap-2 mt-2">
-                {isLongMessage && (
-                  <button
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    className="text-xs flex items-center gap-1 text-primary-foreground/70 hover:text-primary-foreground transition"
+              <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-primary-foreground/20">
+                <button 
+                  onClick={() => copyToClipboard(textContent)}
+                  className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
+                  title="Copy message"
+                >
+                  <Copy size={16} />
+                </button>
+                {isLatestUserMessage && onRedoMessage && (
+                  <button 
+                    onClick={() => onRedoMessage(message)}
+                    className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
+                    title="Retry message"
                   >
-                    {isExpanded ? (
-                      <>
-                        <span>See less</span>
-                        <ChevronUp size={14} />
-                      </>
-                    ) : (
-                      <>
-                        <span>See more</span>
-                        <ChevronDown size={14} />
-                      </>
-                    )}
+                    <RefreshCw size={16} />
                   </button>
                 )}
-                
-                {isLatestUserMessage && isHovering && (
-                  <button
+                {onEditMessage && (
+                  <button 
                     onClick={() => setIsEditing(true)}
                     className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
                     title="Edit message"
@@ -227,7 +243,7 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
             )}
             
             {!isStreaming && (
-              <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-secondary-foreground/20">
+              <div className="flex items-center justify-end gap-2 mt-1">
                 <button 
                   onClick={() => copyToClipboard(message.content)}
                   className="p-1 text-secondary-foreground/70 hover:text-secondary-foreground transition rounded-md hover:bg-secondary-foreground/10"

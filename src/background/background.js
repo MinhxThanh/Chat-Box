@@ -1,10 +1,17 @@
 // This background script manages the side panel
 
-// Keep track of which tab has the sidebar open
-let activeSidebarTabId = null;
+// Track active tab and sidebar state
+let activeTabId = null;          // updated on every tab switch
+let sidebarOpen = false;       // global toggle
+
+// Keep track of active tab
+chrome.tabs.onActivated.addListener(({tabId}) => activeTabId = tabId);
+chrome.tabs.onRemoved.addListener(id => { 
+  if (id === activeTabId) activeTabId = null; 
+});
 
 // Track sidebar open state
-let sidebarOpen = false;
+let activeSidebarTabId = null;
 
 // Configure the side panel behavior - allow action click to open
 chrome.sidePanel
@@ -12,64 +19,56 @@ chrome.sidePanel
   .catch((error) => console.error(error));
 
 // Register a command shortcut for toggling the sidebar
-chrome.commands.onCommand.addListener((command) => {
-  console.log('Command received:', command);
-  if (command === 'toggle_sidebar') {
-    console.log('Toggle sidebar command received, current state:', sidebarOpen ? 'open' : 'closed');
-    
-    if (sidebarOpen && activeSidebarTabId) {
-      console.log('Closing sidebar');
-      
-      // Close the sidebar on the active tab
-      toggleSidebar(activeSidebarTabId, false);
-    } else {
-      // Instead of trying to open directly (which requires a user gesture),
-      // notify the user to click the icon.
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'assets/icon48.png',
-        title: 'Chat Box Sidebar',
-        message: 'To open the Chat Box sidebar, please click its icon in the Chrome toolbar.'
-      });
-      console.log('Cannot open sidebar directly via shortcut, notified user.');
+chrome.commands.onCommand.addListener(command => {
+  if (command !== 'toggle_sidebar' || !activeTabId) return;
+
+  if (sidebarOpen && activeSidebarTabId === activeTabId) {
+    // Closing never requires a user gesture
+    chrome.sidePanel.setOptions({tabId: activeTabId, enabled: false});
+    sidebarOpen = false;
+    activeSidebarTabId = null;
+    broadcastSidebarStatus();
+  } else {
+    // Open synchronously using callback
+    chrome.sidePanel.setOptions(
+      {tabId: activeTabId, path: 'sidebar.html', enabled: true},
+      () => chrome.sidePanel.open({tabId: activeTabId})  // still same call stack
+    );
+    sidebarOpen = true;
+    activeSidebarTabId = activeTabId;
+    broadcastSidebarStatus();
+  }
+});
+
+// Listen for messages from content scripts
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'openSidebar') {
+    if (sender.tab) {
+      toggleSidebar(sender.tab.id, true);
     }
   }
 });
 
-// Function to toggle the sidebar on a specific tab
+// Function to toggle the sidebar on a specific tab (only used for non-command opens)
 function toggleSidebar(tabId, shouldOpen) {
   if (shouldOpen) {
-    // First, close the sidebar on any previously open tab
-    if (activeSidebarTabId && activeSidebarTabId !== tabId) {
-      chrome.sidePanel.setOptions({
-        tabId: activeSidebarTabId,
-        enabled: false
-      }, () => {
-        console.log('Disabled sidebar on previous tab:', activeSidebarTabId);
-      });
-    }
-    
-    // Configure and open the sidebar for this tab
+    // For non-command opens (like from content script)
     chrome.sidePanel.setOptions({
       tabId: tabId,
       path: 'sidebar.html',
       enabled: true
     }, () => {
-      // Only after options are set, open the sidebar
-      chrome.sidePanel.open({ tabId: tabId }, () => {
-        console.log('Sidebar opened successfully on tab:', tabId);
-        activeSidebarTabId = tabId;
-        sidebarOpen = true;
-        broadcastSidebarStatus();
-      });
+      chrome.sidePanel.open({ tabId });
+      activeSidebarTabId = tabId;
+      sidebarOpen = true;
+      broadcastSidebarStatus();
     });
   } else {
-    // Close the sidebar
+    // Closing doesn't require special handling
     chrome.sidePanel.setOptions({
       tabId: tabId,
       enabled: false
     }, () => {
-      console.log('Sidebar closed successfully on tab:', tabId);
       activeSidebarTabId = null;
       sidebarOpen = false;
       broadcastSidebarStatus();
@@ -222,6 +221,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+// Listen for tab updates to inject content script on YouTube navigation
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (
+    changeInfo.status === 'complete' &&
+    tab.url &&
+    tab.url.includes('youtube.com/watch')
+  ) {
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['contentScript.js'],
+    });
+  }
+});
+
 // Listen for tab activation events to manage sidebar visibility
 chrome.tabs.onActivated.addListener((activeInfo) => {
   console.log('Tab activated:', activeInfo.tabId);
@@ -250,10 +263,10 @@ chrome.runtime.onInstalled.addListener((details) => {
   // Set initial settings if none exist
   if (details.reason === "install") {
     const defaultSettings = {
-      apiKey: '',
-      endpoint: 'https://api.openai.com/v1',
+      apiKey: 'no-api-key',
+      endpoint: 'http://localhost:11434',
       models: [],
-      selectedModel: 'gpt-3.5-turbo'
+      selectedModel: 'gemma3'
     };
     chrome.storage.local.set({ aiChatSettings: defaultSettings });
   }

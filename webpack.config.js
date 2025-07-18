@@ -7,6 +7,7 @@ module.exports = {
     sidebar: './src/sidebar/index.jsx',
     background: './src/background/background.js',
     contentScript: './src/content/contentScript.js',
+    selectionObserver: './src/content/selectionObserver.js',
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -45,6 +46,7 @@ module.exports = {
       patterns: [
         { from: 'manifest.json', to: '.' },
         { from: 'assets', to: 'assets' },
+        { from: 'src/content/selection.css', to: '.' },
       ],
     }),
   ],

@@ -92,7 +92,7 @@ export default function ApiKeyForm() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-4 text-gray-100">Web Search Configuration</h2>
+      <h2 className="text-xl font-bold mb-4 text-gray-100">Web Search Configuration</h2>
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
           <Label htmlFor="engineSelect" className="block text-sm font-medium mb-1">

@@ -12,7 +12,7 @@ function cn(...inputs) {
 
 // Dialog variants using class-variance-authority
 const dialogVariants = cva(
-  "fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white rounded-lg shadow-lg focus:outline-none",
+  "fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full bg-background max-w-lg rounded-lg shadow-lg focus:outline-none",
   {
     variants: {
       size: {
@@ -33,7 +33,7 @@ const overlayClass = "fixed inset-0 z-40 bg-black/50"
 // Dialog root context for traps and accessibility
 const DialogContext = React.createContext()
 
-export function Dialog({ open, onOpenChange, children }) {
+export function Dialog({ open, onOpenChange, children, className }) {
   React.useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden"
@@ -50,7 +50,7 @@ export function Dialog({ open, onOpenChange, children }) {
       <div
         role="dialog"
         aria-modal="true"
-        className={dialogVariants()}
+        className={cn(dialogVariants(), className)}
         tabIndex={-1}
         style={{ zIndex: 50 }}
       >

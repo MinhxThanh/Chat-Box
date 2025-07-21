@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { addPrompt, getAllPrompts, updatePrompt, deletePrompt } from '../db/promptDb';
 import { useNotification } from '../context/NotificationContext';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Download, Upload } from 'lucide-react';
 import { Button } from './ui/button';
 
 const CustomPrompts = () => {
@@ -12,6 +12,7 @@ const CustomPrompts = () => {
   const [editingPrompt, setEditingPrompt] = useState(null);
   const { showAlert } = useNotification();
   const [showForm, setShowForm] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetchPrompts();
@@ -25,6 +26,93 @@ const CustomPrompts = () => {
       console.error('Failed to fetch prompts:', error);
       showAlert('Error', 'Failed to load prompts. Please try again.');
     }
+  };
+
+  const handleExport = async () => {
+    try {
+      const allPrompts = await getAllPrompts();
+      const exportData = {
+        version: "1.0",
+        timestamp: new Date().toISOString(),
+        prompts: allPrompts.map(({ id, ...prompt }) => prompt) // Remove id for export
+      };
+
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+
+      const exportFileDefaultName = `custom-prompts-${new Date().toISOString().split('T')[0]}.json`;
+
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+
+      showAlert('Success', 'Prompts exported successfully!');
+    } catch (error) {
+      console.error('Failed to export prompts:', error);
+      showAlert('Error', 'Failed to export prompts. Please try again.');
+    }
+  };
+
+  const handleImport = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const importData = JSON.parse(text);
+
+      // Validate import data structure
+      if (!importData.prompts || !Array.isArray(importData.prompts)) {
+        throw new Error('Invalid file format: missing prompts array');
+      }
+
+      let importedCount = 0;
+      let skippedCount = 0;
+
+      for (const promptData of importData.prompts) {
+        // Validate required fields
+        if (!promptData.title || !promptData.prompt) {
+          skippedCount++;
+          continue;
+        }
+
+        try {
+          await addPrompt({
+            title: promptData.title,
+            command: promptData.command || '',
+            prompt: promptData.prompt
+          });
+          importedCount++;
+        } catch (error) {
+          console.error('Failed to import prompt:', promptData.title, error);
+          skippedCount++;
+        }
+      }
+
+      await fetchPrompts();
+
+      if (importedCount > 0) {
+        let message = `Successfully imported ${importedCount} prompt(s)`;
+        if (skippedCount > 0) {
+          message += `. Skipped ${skippedCount} prompt(s) due to errors or missing data.`;
+        }
+        showAlert('Success', message);
+      } else {
+        showAlert('Warning', 'No valid prompts found in the file.');
+      }
+
+    } catch (error) {
+      console.error('Failed to import prompts:', error);
+      showAlert('Error', 'Failed to import prompts. Please check the file format and try again.');
+    }
+
+    // Reset file input
+    event.target.value = '';
   };
 
   const handleSubmit = async (e) => {
@@ -93,9 +181,27 @@ const CustomPrompts = () => {
   return (
     <div className="space-y-6 text-gray-200">
       <div className="w-full flex justify-between items-center">
-        <h2 className="text-xl font-semibold mb-4 text-white">Custom Prompts</h2>
-        <Button onClick={() => setShowForm(prev => !prev)} variant="outline">New Prompt</Button>
+        <div className="flex items-center space-x-2">
+          <Button onClick={handleImport} variant="outline" size="sm">
+            <Upload className="h-4 w-4 mr-2" /> Import
+          </Button>
+          <Button onClick={handleExport} variant="outline" size="sm">
+            <Download className="h-4 w-4 mr-2" /> Export
+          </Button>
+        </div>
+        <Button onClick={() => setShowForm(prev => !prev)} variant="outline">
+          New Prompt
+        </Button>
       </div>
+
+      {/* Hidden file input for import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
+      />
 
       {
         showForm && (

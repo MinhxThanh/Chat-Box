@@ -23,9 +23,9 @@
 ***Chat Box*** is a browser extension that streamlines your online experience by integrating AI chat, advanced web search, document interaction, and more into a convenient sidebar.
 
 ## What's New
-
+- **Import/Export** Add import/export providers and custom prompts
 - **Shortcut Key**: Access the sidebar quickly with `Cmd/Ctrl + E`.
-    - Edit Shortcut in `chrome://extensions/shortcuts`
+    - Edit Shortcut in `chrome://extensions/shortcuts` or `brave://extensions/shortcuts`
 - **Text Selection**: Highlight text on any webpage to automatically use it as context in your chat.
 - **Custom Prompts**: Create, manage, and use your own custom prompts for repetitive tasks.
 - **Improved YouTube Integration**: Enjoy more robust and functional interactions with YouTube videos.
@@ -121,6 +121,11 @@ You can configure Chat Box to work with local LLMs like those served by [Ollama]
     -   For **API Key**, enter: `no-key` (Ollama's OpenAI-compatible endpoint doesn't strictly require a key, but the field might be mandatory in the UI. Any non-empty string should work).
     -   Click "Load Models" to see models available from your Ollama instance.
 
+
+## Images
+<div align="center">
+<img width="1280" height="800" alt="Al Chat 1280x800" src="https://github.com/user-attachments/assets/249b57a5-1757-4304-ac62-eadbf26064a0" />
+</div>
 
 ## Technologies Used
 

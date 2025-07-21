@@ -705,6 +705,9 @@ function renderMarkdown(markdown) {
 
   // Apply the custom heading class to Summary and Highlights sections
   mainHtml = mainHtml.replace(/\[(Summary|Highlights)\]/g, '<strong class="summary-highlight-heading">[$1]</strong>');
+  
+  // Also apply the class to Summary/Highlights when they appear in h3 strong tags
+  mainHtml = mainHtml.replace(/<h3>\s*<strong>(Summary|Highlights)<\/strong>\s*<\/h3>/g, '<h3><strong class="summary-highlight-heading">$1</strong></h3>');
 
   // Create the final HTML with thinking block if present
   let finalHtml = '';

@@ -63,6 +63,9 @@ export const Chat = ({
   }, []);
   const [selectedText, setSelectedText] = useState(null);
   const [firstMessageSent, setFirstMessageSent] = useState(false);
+  
+  // Track if YouTube detection has been attempted for current conversation
+  const youtubeDetectionAttempted = useRef(null);
 
   // Clear YouTube context and block re-detection
   const clearYoutubeContext = useCallback(() => {
@@ -151,6 +154,47 @@ export const Chat = ({
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.removeItem('youtubeVideoContext');
       }
+      
+      // Reset YouTube detection flag for new conversation
+      youtubeDetectionAttempted.current = null;
+      
+      // Attempt YouTube detection once for this new conversation
+      setTimeout(() => {
+        if (youtubeDetectionAttempted.current !== conversation.id && !blockYoutubeDetection) {
+          youtubeDetectionAttempted.current = conversation.id;
+          
+          if (typeof chrome !== 'undefined' && chrome.tabs) {
+            chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+              if (tabs[0] && tabs[0].id) {
+                chrome.tabs.sendMessage(
+                  tabs[0].id,
+                  { action: "getPageContent" },
+                  function (response) {
+                    if (chrome.runtime.lastError) {
+                      return;
+                    }
+                    if (response && response.type === 'youtube') {
+                      console.log('Detected YouTube video, loading context:', response);
+                      setYoutubeInfo(response);
+                      setMessages(prev => {
+                        const hasYouTubeMessage = prev.some(msg => msg.role === 'system' && msg.content.startsWith('YouTube video detected:'));
+                        if (!hasYouTubeMessage) {
+                          return [
+                            ...prev,
+                            { role: "system", content: `YouTube video detected: "${response.title}". Ask questions about this video!` }
+                          ];
+                        }
+                        return prev;
+                      });
+                    }
+                  }
+                );
+              }
+            });
+          }
+        }
+      }, 100); // Small delay to ensure conversation state is settled
+      
     } else if (!conversation) {
       setMessages([{ role: "system", content: WELCOME_MESSAGE }]);
       setUploadedFile(null);
@@ -167,50 +211,51 @@ export const Chat = ({
         sessionStorage.removeItem('youtubeVideoContext');
       }
       setFirstMessageSent(false); // Ensure welcome message can show
+      
+      // Reset YouTube detection flag for new conversation
+      youtubeDetectionAttempted.current = null;
+      
+      // Attempt YouTube detection once for this new conversation
+      setTimeout(() => {
+        if (youtubeDetectionAttempted.current !== 'new-conversation' && !blockYoutubeDetection) {
+          youtubeDetectionAttempted.current = 'new-conversation';
+          
+          if (typeof chrome !== 'undefined' && chrome.tabs) {
+            chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+              if (tabs[0] && tabs[0].id) {
+                chrome.tabs.sendMessage(
+                  tabs[0].id,
+                  { action: "getPageContent" },
+                  function (response) {
+                    if (chrome.runtime.lastError) {
+                      return;
+                    }
+                    if (response && response.type === 'youtube') {
+                      console.log('Detected YouTube video, loading context:', response);
+                      setYoutubeInfo(response);
+                      setMessages(prev => {
+                        const hasYouTubeMessage = prev.some(msg => msg.role === 'system' && msg.content.startsWith('YouTube video detected:'));
+                        if (!hasYouTubeMessage) {
+                          return [
+                            ...prev,
+                            { role: "system", content: `YouTube video detected: "${response.title}". Ask questions about this video!` }
+                          ];
+                        }
+                        return prev;
+                      });
+                    }
+                  }
+                );
+              }
+            });
+          }
+        }
+      }, 100); // Small delay to ensure conversation state is settled
     }
   }, [conversation?.id]); // Rely only on conversation.id for resetting messages and context
 
 
-  useEffect(() => {
-    // Skip fetching if detection is blocked
-    if (blockYoutubeDetection) {
-      return;
-    }
 
-    // Only try to get YouTube content if we don't already have it
-    // and not tied to conversation.id to avoid re-fetching on new chat if tab is same
-    if (!youtubeInfo && typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (tabs[0] && tabs[0].id) { // Ensure tab and tab.id exist
-          chrome.tabs.sendMessage(
-            tabs[0].id,
-            { action: "getPageContent" },
-            function (response) {
-              if (chrome.runtime.lastError) {
-                // console.warn("Error sending message to content script (YouTube check):", chrome.runtime.lastError.message);
-                return;
-              }
-              if (response && response.type === 'youtube') {
-                console.log('Detected YouTube video, loading context:', response);
-                setYoutubeInfo(response);
-                setMessages(prev => {
-                  // Avoid duplicate system messages about YouTube detection
-                  const hasYouTubeMessage = prev.some(msg => msg.role === 'system' && msg.content.startsWith('YouTube video detected:'));
-                  if (!hasYouTubeMessage) {
-                    return [
-                      ...prev,
-                      { role: "system", content: `YouTube video detected: "${response.title}". Ask questions about this video!` }
-                    ];
-                  }
-                  return prev;
-                });
-              }
-            }
-          );
-        }
-      });
-    }
-  }, [youtubeInfo, blockYoutubeDetection]); // Depends on detection block flag
 
   useEffect(() => {
     scrollToBottom();

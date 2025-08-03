@@ -18,19 +18,18 @@
 
 <div align="center">
   <img width="1095" alt="Chat Box Description Image" src="https://github.com/user-attachments/assets/2cd01baf-ba5c-46c9-995a-323fdc7bd2fb" />
+
+https://github.com/user-attachments/assets/bc03e6d0-92cb-4bea-81fb-1c67293cf79d
 </div>
 
 ***Chat Box*** is a browser extension that streamlines your online experience by integrating AI chat, advanced web search, document interaction, and more into a convenient sidebar.
 
-## What's New
-- **Import/Export** Add import/export providers and custom prompts
-- **Shortcut Key**: Access the sidebar quickly with `Cmd/Ctrl + E`.
-    - Edit Shortcut in `chrome://extensions/shortcuts` or `brave://extensions/shortcuts`
-- **Text Selection**: Highlight text on any webpage to automatically use it as context in your chat.
-- **Custom Prompts**: Create, manage, and use your own custom prompts for repetitive tasks.
-- **Improved YouTube Integration**: Enjoy more robust and functional interactions with YouTube videos.
-- **UI Enhancements**: Experience a refreshed and more intuitive settings interface.
-- **Bug Fixes**: Squashed a bug related to chat history to improve reliability.
+## What's New In V0.6.1
+- **Quick Actions**: New instant text processing actions appear when you select text - Summarize, Explain, Translate, Rewrite, and Fix Grammar with one click.
+- **Bug Fixes**: 
+  - Fixed issue where selected text wasn't displaying in user messages when using text selection feature
+  - Improved selected text handling to properly show in message UI with visual indicators
+  - Enhanced message editing to preserve selected text context when modifying messages
 
 ## Key Features
 
@@ -40,6 +39,12 @@ Chat Box offers a rich set of functionalities to streamline your AI interactions
 -   **⚡️ Quick Access Shortcut**: Open the sidebar instantly with `Cmd/Ctrl + E`.
 -   **💬 AI Chat**: Engage in conversations with various AI models directly from the sidebar.
 -   **📝 Contextual Text Selection**: Highlight text on any website to use it as context in your chat.
+-   **🔧 Instant Quick Actions**: Select any text to reveal quick action buttons for:
+    -   **📊 Summarize**: Get concise summaries of lengthy content
+    -   **💡 Explain**: Understand complex concepts in simple terms  
+    -   **🌍 Translate**: Translate text to any language
+    -   **✍️ Rewrite**: Improve text clarity and engagement
+    -   **📝 Fix Grammar**: Automatically correct grammar, spelling, and punctuation in any language
 -   **✨ Custom Prompts**: Create and save your own custom prompts for quick reuse.
 -   **📚 Improved Chat History**: Easily access and manage multiple past conversations with improved reliability.
 -   **⚙️ Flexible API Configuration & Refreshed UI**:

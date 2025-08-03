@@ -1211,7 +1211,11 @@ Consider this YouTube video context when responding.`;
         apiUserMessageContent = apiTextContent + (uploadedFile ? `\n[File attached: ${uploadedFile.file.name}]` : "");
     }
     
-    const uiUserMessage = { role: "user", content: uiUserMessageContent };
+    const uiUserMessage = { 
+        role: "user", 
+        content: uiUserMessageContent,
+        selectedText: selectedText // Add selected text as a separate property for UI display
+    };
     setMessages(prev => [...prev, uiUserMessage]); // Add user message to UI
 
     // Clear input and file states *after* preparing message content
@@ -1222,6 +1226,7 @@ Consider this YouTube video context when responding.`;
     // uploadedImageUrl is revoked by its own useEffect when it changes
     // setUploadedImageUrl(null); // Handled by useEffect cleanup
     setUploadedImageBase64(null);
+    setSelectedText(null); // Clear selected text after sending
     if (textareaRef.current) adjustTextareaHeight(); // Reset height based on new empty input
 
 
@@ -1567,7 +1572,8 @@ Full web page content:\n${allChunksText}`;
       // For UI, keep existing image URL (could be blob or original if re-editing)
       updatedUiUserMessage = {
         ...messageToEdit,
-        content: [{ type: 'text', text: newContentString }, ...imageItems]
+        content: [{ type: 'text', text: newContentString }, ...imageItems],
+        selectedText: messageToEdit.selectedText // Preserve selected text
       };
       // For API, ensure base64 if image was originally uploaded
       const apiImageItems = imageItems.map(img => {
@@ -1579,7 +1585,11 @@ Full web page content:\n${allChunksText}`;
       // Update in the updatedMessages array
       updatedMessages[messageIndex] = updatedUiUserMessage;
     } else { // Editing a simple text message
-      updatedUiUserMessage = { ...messageToEdit, content: newContentString };
+      updatedUiUserMessage = { 
+        ...messageToEdit, 
+        content: newContentString,
+        selectedText: messageToEdit.selectedText // Preserve selected text
+      };
       updatedApiUserMessageContent = newContentString;
 
       // Update in the updatedMessages array
@@ -2088,7 +2098,7 @@ Full web page content:\n${allChunksText}`;
                   <div className="group relative mx-1 px-2 py-1 bg-primary/10 rounded-md text-xs flex overflow-hidden items-center gap-1 mb-1 border border-primary/20 animate-in fade-in duration-500">
                     <span className="truncate w-full text-primary/80 text-[11px] overflow-hidden" title={selectedText}>{selectedText.slice(0, 80)}...</span>
                     <Button variant="ghost" size="icon" className="absolute top-1/2 -translate-y-1/2 right-1 h-5 w-5 p-0 hover:bg-destructive/20 rounded-full ml-auto opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => { setSelectedText(null); }}>
-                      <X classNam e="h-3 w-3 text-destructive" />
+                      <X className="h-3 w-3 text-destructive" />
                     </Button>
                   </div>
                 )

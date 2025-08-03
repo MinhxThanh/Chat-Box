@@ -18,16 +18,24 @@ const WhatsNewDialog = ({ open, onOpenChange }) => {
         <div className="mt-4 space-y-4">
           <div className="bg-primary/10 p-4 rounded-lg border">
             <h3 className="font-semibold text-lg text-primary mb-2">
-              Version 0.5.3
+              Version 0.6.1
             </h3>
             <div className="text-sm space-y-2">
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Add import/export providers and custom prompts</span>
+                <span>New Quick Actions: Summarize, Explain, Translate, Rewrite, and Fix Grammar with one click</span>
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Fix some errors</span>
+                <span>Fixed selected text display in user messages</span>
+              </div>
+              <div className="flex items-start space-x-2">
+                <span className="text-green-500 font-bold">✓</span>
+                <span>Improved text selection handling with visual indicators</span>
+              </div>
+              <div className="flex items-start space-x-2">
+                <span className="text-green-500 font-bold">✓</span>
+                <span>Enhanced message editing to preserve selected text context</span>
               </div>
             </div>
           </div>

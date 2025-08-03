@@ -11,7 +11,7 @@ const SelectedTextSnippet = ({ text }) => {
 
   return (
     <div 
-      className="border border-primary/30 bg-primary/10 rounded-md text-xs text-primary/90 cursor-pointer"
+      className="border border-primary/30 bg-primary/10 rounded-[10px] mb-1 p-[3px] text-xs text-primary/90 cursor-pointer"
       onClick={() => setIsExpanded(!isExpanded)}
     >
       <div className="flex justify-between items-start gap-2">
@@ -107,7 +107,7 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
         className={cn(
           "rounded-lg shadow-md",
           isUser
-            ? "px-4 py-2 max-w-[80%] bg-primary text-primary-foreground rounded-br-none"
+            ? "max-w-[80%] text-primary-foreground"
             : "w-full p-2 text-secondary-foreground mt-2 bg-ai-background"
         )}
       >
@@ -164,7 +164,9 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
                 </>
               ) : (
                 // Handle simple string content
-                textContent && <Markdown content={displayMessage} />
+                <div className="rounded-2xl shadow-md bg-primary px-4 py-2 text-[13px]">
+                  {textContent && <Markdown content={displayMessage} />}
+                </div>
               )}
 
               {isLongMessage && (
@@ -176,37 +178,39 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
                 </button>
               )}
               
-              <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-primary-foreground/20">
-                <button 
-                  onClick={() => copyToClipboard(textContent)}
-                  className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
-                  title="Copy message"
-                >
-                  <Copy size={16} />
-                </button>
-                {isLatestUserMessage && onRedoMessage && (
+              {isHovering && (
+                <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-primary-foreground/20">
                   <button 
-                    onClick={() => onRedoMessage(message)}
+                    onClick={() => copyToClipboard(textContent)}
                     className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
-                    title="Retry message"
+                    title="Copy message"
                   >
-                    <RefreshCw size={16} />
+                    <Copy size={16} />
                   </button>
-                )}
-                {onEditMessage && (
-                  <button 
-                    onClick={() => setIsEditing(true)}
-                    className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
-                    title="Edit message"
-                  >
-                    <Edit size={16} />
-                  </button>
-                )}
-              </div>
+                  {isLatestUserMessage && onRedoMessage && (
+                    <button 
+                      onClick={() => onRedoMessage(message)}
+                      className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
+                      title="Retry message"
+                    >
+                      <RefreshCw size={16} />
+                    </button>
+                  )}
+                  {onEditMessage && (
+                    <button 
+                      onClick={() => setIsEditing(true)}
+                      className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
+                      title="Edit message"
+                    >
+                      <Edit size={16} />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )
         ) : (
-          <div className="text-sm">
+          <div className="text-[1rem]">
             {/* Handle both string content and array content */}
             {Array.isArray(message.content) ? (
               <>
@@ -242,7 +246,7 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
               <span className="inline-block w-2 h-4 ml-1 bg-primary-foreground animate-pulse"></span>
             )}
             
-            {!isStreaming && (
+            {!isStreaming && isHovering && (
               <div className="flex items-center justify-end gap-2 mt-1">
                 <button 
                   onClick={() => copyToClipboard(message.content)}

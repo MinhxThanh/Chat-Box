@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chat Box: Chat with all AI models (DeepSeek, Claude, Groq, Ollama, etc.)",
-  "version": "0.5.3",
+  "version": "0.6.1",
   "description": "AI chat, advanced web search, document interaction, and more into a convenient sidebar.",
   "action": {
     "default_icon": {
@@ -48,7 +48,15 @@
       },
       "description": "Toggle sidebar open/close"
     }
-
-  }
-
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/action-icons/*.svg"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
 }

@@ -1,10 +1,11 @@
 {
   "name": "chat-box",
-  "version": "0.5.2",
+  "version": "0.6.2",
   "description": "AI chat, advanced web search, document interaction, and more into a convenient sidebar.",
   "scripts": {
     "dev": "webpack --watch --mode=development",
-    "build": "webpack --mode=production"
+    "build": "webpack --mode=production",
+    "build:firefox": "npm run build && rm -rf dist-firefox && mkdir dist-firefox && cp -R dist/* dist-firefox/ && cp dist/manifest.firefox.json dist-firefox/manifest.json"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.14",

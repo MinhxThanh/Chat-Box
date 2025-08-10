@@ -1,51 +1,79 @@
 // This background script manages the side panel
 
+// Cross-browser API wrapper
+const api = typeof browser !== 'undefined' ? browser : chrome;
+
 // Track active tab and sidebar state
 let activeTabId = null;          // updated on every tab switch
 let sidebarOpen = false;       // global toggle
 
 // Keep track of active tab
-chrome.tabs.onActivated.addListener(({tabId}) => activeTabId = tabId);
-chrome.tabs.onRemoved.addListener(id => { 
+api.tabs.onActivated.addListener(({tabId}) => activeTabId = tabId);
+api.tabs.onRemoved.addListener(id => { 
   if (id === activeTabId) activeTabId = null; 
 });
 
 // Track sidebar open state
 let activeSidebarTabId = null;
 
-// Configure the side panel behavior - allow action click to open
-chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: true })
-  .catch((error) => console.error(error));
+// Configure the side panel behavior - allow action click to open (Chrome only)
+if (api.sidePanel && api.sidePanel.setPanelBehavior) {
+  try {
+    api.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  } catch (error) {
+    // Ignore if not supported
+    console.error(error);
+  }
+}
 
 // Register a command shortcut for toggling the sidebar
-chrome.commands.onCommand.addListener(command => {
+api.commands.onCommand.addListener(command => {
   if (command !== 'toggle_sidebar' || !activeTabId) return;
 
   if (sidebarOpen && activeSidebarTabId === activeTabId) {
-    // Closing never requires a user gesture
-    chrome.sidePanel.setOptions({tabId: activeTabId, enabled: false});
+    // Close
+    if (api.sidePanel && api.sidePanel.setOptions) {
+      api.sidePanel.setOptions({tabId: activeTabId, enabled: false});
+    } else if (api.sidebarAction && api.sidebarAction.close) {
+      // Firefox sidebar is per-window
+      api.sidebarAction.close();
+    }
     sidebarOpen = false;
     activeSidebarTabId = null;
     broadcastSidebarStatus();
   } else {
-    // Open synchronously using callback
-    chrome.sidePanel.setOptions(
-      {tabId: activeTabId, path: 'sidebar.html', enabled: true},
-      () => chrome.sidePanel.open({tabId: activeTabId})  // still same call stack
-    );
-    sidebarOpen = true;
-    activeSidebarTabId = activeTabId;
-    broadcastSidebarStatus();
+    // Open
+    if (api.sidePanel && api.sidePanel.setOptions && api.sidePanel.open) {
+      // Use callback form to preserve user gesture in Chrome
+      api.sidePanel.setOptions(
+        {tabId: activeTabId, path: 'sidebar.html', enabled: true},
+        () => api.sidePanel.open({tabId: activeTabId})
+      );
+      sidebarOpen = true;
+      activeSidebarTabId = activeTabId;
+      broadcastSidebarStatus();
+    } else if (api.sidebarAction && api.sidebarAction.open) {
+      api.sidebarAction.open();
+      sidebarOpen = true;
+      activeSidebarTabId = activeTabId;
+      broadcastSidebarStatus();
+    } else {
+      // Fallback: open the html in a new tab
+      const url = api.runtime.getURL('sidebar.html');
+      api.tabs.create({ url });
+    }
   }
 });
 
 // Listen for messages from content scripts
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'openSidebar') {
     if (sender.tab) {
       toggleSidebar(sender.tab.id, true);
     }
+  }
+  if (message.action === 'checkSidebarStatus') {
+    sendResponse({ isOpen: sidebarOpen });
   }
 });
 
@@ -53,26 +81,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function toggleSidebar(tabId, shouldOpen) {
   if (shouldOpen) {
     // For non-command opens (like from content script)
-    chrome.sidePanel.setOptions({
-      tabId: tabId,
-      path: 'sidebar.html',
-      enabled: true
-    }, () => {
-      chrome.sidePanel.open({ tabId });
+    if (api.sidePanel && api.sidePanel.setOptions && api.sidePanel.open) {
+      api.sidePanel.setOptions({
+        tabId: tabId,
+        path: 'sidebar.html',
+        enabled: true
+      }, () => {
+        api.sidePanel.open({ tabId });
+        activeSidebarTabId = tabId;
+        sidebarOpen = true;
+        broadcastSidebarStatus();
+      });
+    } else if (api.sidebarAction && api.sidebarAction.open) {
+      api.sidebarAction.open();
       activeSidebarTabId = tabId;
       sidebarOpen = true;
       broadcastSidebarStatus();
-    });
+    } else {
+      const url = api.runtime.getURL('sidebar.html');
+      api.tabs.create({ url });
+    }
   } else {
     // Closing doesn't require special handling
-    chrome.sidePanel.setOptions({
-      tabId: tabId,
-      enabled: false
-    }, () => {
+    if (api.sidePanel && api.sidePanel.setOptions) {
+      api.sidePanel.setOptions({
+        tabId: tabId,
+        enabled: false
+      }, () => {
+        activeSidebarTabId = null;
+        sidebarOpen = false;
+        broadcastSidebarStatus();
+      });
+    } else if (api.sidebarAction && api.sidebarAction.close) {
+      api.sidebarAction.close();
       activeSidebarTabId = null;
       sidebarOpen = false;
       broadcastSidebarStatus();
-    });
+    }
   }
 }
 
@@ -83,15 +128,12 @@ function forceCloseViaTabs() {
   broadcastSidebarStatus();
   
   // Tell all tabs to force close the sidebar
-  chrome.tabs.query({}, (tabs) => {
+  api.tabs.query({}, (tabs) => {
     tabs.forEach(tab => {
       // Only attempt to send messages to http/https tabs
       if (tab.url && (tab.url.startsWith('http:') || tab.url.startsWith('https:'))) {
-        chrome.tabs.sendMessage(tab.id, {
+        api.tabs.sendMessage(tab.id, {
           action: 'forceSidebarClose'
-        }).catch(error => {
-          // This error is expected if the content script is not injected or listening on a particular tab.
-          // console.warn(`forceCloseViaTabs: Failed to send message to tab ${tab.id} (${tab.url || 'no URL'}): ${error.message}`);
         });
       }
     });
@@ -101,46 +143,64 @@ function forceCloseViaTabs() {
   
   // Also disable the sidebar on the tracked tab if we know it
   if (activeSidebarTabId) {
-    chrome.sidePanel.setOptions({
-      tabId: activeSidebarTabId,
-      enabled: false
-    }, () => {
+    if (api.sidePanel && api.sidePanel.setOptions) {
+      api.sidePanel.setOptions({
+        tabId: activeSidebarTabId,
+        enabled: false
+      }, () => {
+        activeSidebarTabId = null;
+      });
+    } else if (api.sidebarAction && api.sidebarAction.close) {
+      api.sidebarAction.close();
       activeSidebarTabId = null;
-    });
+    }
   }
 }
 
 // When the extension icon is clicked, open the sidebar for the specific tab
-chrome.action.onClicked.addListener((tab) => {
+const onActionClicked = (tab) => {
   console.log('Extension icon clicked, opening sidebar for tab:', tab.id);
   
   // Configure and open the sidebar for this tab using callbacks to preserve user gesture
-  chrome.sidePanel.setOptions({
-    tabId: tab.id,
-    path: 'sidebar.html',
-    enabled: true
-  }, () => {
-    chrome.sidePanel.open({ tabId: tab.id }, () => {
-      console.log('Sidebar opened successfully from icon click');
-      activeSidebarTabId = tab.id;
-      sidebarOpen = true;
-      broadcastSidebarStatus();
+  if (api.sidePanel && api.sidePanel.setOptions && api.sidePanel.open) {
+    api.sidePanel.setOptions({
+      tabId: tab.id,
+      path: 'sidebar.html',
+      enabled: true
+    }, () => {
+      api.sidePanel.open({ tabId: tab.id }, () => {
+        console.log('Sidebar opened successfully from icon click');
+        activeSidebarTabId = tab.id;
+        sidebarOpen = true;
+        broadcastSidebarStatus();
+      });
     });
-  });
-});
+  } else if (api.sidebarAction && api.sidebarAction.open) {
+    api.sidebarAction.open();
+    activeSidebarTabId = tab.id;
+    sidebarOpen = true;
+    broadcastSidebarStatus();
+  } else {
+    const url = api.runtime.getURL('sidebar.html');
+    api.tabs.create({ url });
+  }
+};
+
+if (api.action && api.action.onClicked) {
+  api.action.onClicked.addListener(onActionClicked);
+} else if (api.browserAction && api.browserAction.onClicked) {
+  api.browserAction.onClicked.addListener(onActionClicked);
+}
 
 // Function to broadcast sidebar status to content scripts
 function broadcastSidebarStatus() {
-  chrome.tabs.query({}, (tabs) => {
+  api.tabs.query({}, (tabs) => {
     tabs.forEach(tab => {
       // Only attempt to send messages to http/https tabs
       if (tab.url && (tab.url.startsWith('http:') || tab.url.startsWith('https:'))) {
-        chrome.tabs.sendMessage(tab.id, {
+        api.tabs.sendMessage(tab.id, {
           action: 'sidebarStatusChanged',
           isOpen: sidebarOpen
-        }).catch(error => {
-          // This error is expected if the content script is not injected or listening on a particular tab.
-          // console.warn(`broadcastSidebarStatus: Failed to send message to tab ${tab.id} (${tab.url || 'no URL'}): ${error.message}`);
         });
       }
     });
@@ -170,7 +230,7 @@ function closeSidebar(windowId) {
   
   // If we don't know which tab but we have a window ID, try to get the active tab
   if (windowId) {
-    chrome.tabs.query({ active: true, windowId: windowId }, (tabs) => {
+    api.tabs.query({ active: true, windowId: windowId }, (tabs) => {
       if (tabs && tabs.length > 0) {
         toggleSidebar(tabs[0].id, false);
       } else {
@@ -187,7 +247,7 @@ function closeSidebar(windowId) {
 }
 
 // Listen for messages from content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "openSidebar") {
     console.log('Received openSidebar message from content script');
     
@@ -212,7 +272,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   
   if (message.action === "getSettings") {
     // Get settings from chrome.storage
-    chrome.storage.local.get('aiChatSettings', (result) => {
+    api.storage.local.get('aiChatSettings', (result) => {
       sendResponse(result.aiChatSettings || null);
     });
     return true; // Required to use sendResponse asynchronously
@@ -221,22 +281,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Listen for tab updates to inject content script on YouTube navigation
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+// Listen for tab updates to inject content script on YouTube navigation (Chrome-only; Firefox MV3 may not support scripting API)
+api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (
     changeInfo.status === 'complete' &&
     tab.url &&
     tab.url.includes('youtube.com/watch')
   ) {
-    chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: ['contentScript.js'],
-    });
+    if (api.scripting && api.scripting.executeScript) {
+      api.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['contentScript.js'],
+      });
+    }
   }
 });
 
 // Listen for tab activation events to manage sidebar visibility
-chrome.tabs.onActivated.addListener((activeInfo) => {
+api.tabs.onActivated.addListener((activeInfo) => {
   console.log('Tab activated:', activeInfo.tabId);
   
   // If this is not the tab with the active sidebar, update our state
@@ -257,7 +319,7 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 });
 
 // When the extension is installed or updated
-chrome.runtime.onInstalled.addListener((details) => {
+api.runtime.onInstalled.addListener((details) => {
   console.log("Extension installed or updated:", details.reason);
   
   // Set initial settings if none exist
@@ -268,6 +330,6 @@ chrome.runtime.onInstalled.addListener((details) => {
       models: [],
       selectedModel: 'gemma3'
     };
-    chrome.storage.local.set({ aiChatSettings: defaultSettings });
+    api.storage.local.set({ aiChatSettings: defaultSettings });
   }
 });

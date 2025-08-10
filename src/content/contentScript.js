@@ -854,8 +854,9 @@ function createFloatingButton() {
 // Global function to try multiple methods of opening sidebar
 function tryOpenSidebar() {
   console.log('Global tryOpenSidebar called');
+  const api = typeof browser !== 'undefined' ? browser : chrome;
   // First try: message background script
-  chrome.runtime.sendMessage({
+  api.runtime.sendMessage({
     action: 'openSidebar'
   }, (response) => {
     console.log('Background script response:', response);
@@ -868,24 +869,39 @@ function tryOpenSidebar() {
 
     // Second try: direct sidepanel API
     console.log('First method failed, trying direct sidePanel API...');
-    if (chrome.sidePanel) {
-      chrome.sidePanel.open()
+    if (api.sidePanel && api.sidePanel.open) {
+      api.sidePanel.open()
         .then(() => console.log('Sidebar opened via direct API'))
         .catch(err => {
           console.error('Failed with direct API:', err);
 
           // Third try: open extension in a new tab (last resort)
           console.log('Trying to open extension in new tab as last resort');
-          // const extensionId = chrome.runtime.id;
-          // const extensionUrl = `chrome-extension://${extensionId}/sidebar.html`;
-          // window.open(extensionUrl, '_blank');
+          const url = api.runtime.getURL('sidebar.html');
+          if (api.tabs && api.tabs.create) {
+            api.tabs.create({ url });
+          } else {
+            window.open(url, '_blank');
+          }
         });
+    } else if (api.sidebarAction && api.sidebarAction.open) {
+      api.sidebarAction.open().catch(() => {
+        const url = api.runtime.getURL('sidebar.html');
+        if (api.tabs && api.tabs.create) {
+          api.tabs.create({ url });
+        } else {
+          window.open(url, '_blank');
+        }
+      });
     } else {
       // Fallback if sidePanel API not available
       console.log('SidePanel API not available, opening extension page directly');
-      // const extensionId = chrome.runtime.id;
-      // const extensionUrl = `chrome-extension://${extensionId}/sidebar.html`;
-      // window.open(extensionUrl, '_blank');
+      const url = api.runtime.getURL('sidebar.html');
+      if (api.tabs && api.tabs.create) {
+        api.tabs.create({ url });
+      } else {
+        window.open(url, '_blank');
+      }
     }
   });
 }

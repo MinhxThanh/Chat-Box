@@ -1,9 +1,9 @@
 {
-  "manifest_version": 3,
-  "name": "Chat Box: Chat with all AI models (DeepSeek, Claude, Cerebras, Ollama, etc.)",
+  "manifest_version": 2,
+  "name": "Chat Box – Chat with all AI models",
   "version": "0.6.2",
   "description": "AI chat, advanced web search, document interaction, and more into a convenient sidebar.",
-  "action": {
+  "browser_action": {
     "default_icon": {
       "16": "assets/icon16.png",
       "48": "assets/icon48.png",
@@ -13,12 +13,8 @@
   "permissions": [
     "activeTab",
     "storage",
-    "sidePanel",
     "tabs",
     "commands",
-    "scripting"
-  ],
-  "host_permissions": [
     "<all_urls>"
   ],
   "icons": {
@@ -27,7 +23,8 @@
     "128": "assets/icon128.png"
   },
   "background": {
-    "service_worker": "background.js"
+    "scripts": ["background.js"],
+    "persistent": false
   },
   "content_scripts": [
     {
@@ -40,6 +37,10 @@
       "css": ["selection.css"]
     }
   ],
+  "sidebar_action": {
+    "default_title": "Chat Box",
+    "default_panel": "sidebar.html"
+  },
   "commands": {
     "toggle_sidebar": {
       "suggested_key": {
@@ -50,13 +51,14 @@
     }
   },
   "web_accessible_resources": [
-    {
-      "resources": [
-        "assets/action-icons/*.svg"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
+    "assets/action-icons/*.svg"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "thanh@onename.net",
+      "strict_min_version": "109.0"
     }
-  ]
+  }
 }
+
+

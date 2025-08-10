@@ -24,12 +24,10 @@ https://github.com/user-attachments/assets/bc03e6d0-92cb-4bea-81fb-1c67293cf79d
 
 ***Chat Box*** is a browser extension that streamlines your online experience by integrating AI chat, advanced web search, document interaction, and more into a convenient sidebar.
 
-## What's New In V0.6.1
-- **Quick Actions**: New instant text processing actions appear when you select text - Summarize, Explain, Translate, Rewrite, and Fix Grammar with one click.
-- **Bug Fixes**: 
-  - Fixed issue where selected text wasn't displaying in user messages when using text selection feature
-  - Improved selected text handling to properly show in message UI with visual indicators
-  - Enhanced message editing to preserve selected text context when modifying messages
+## What's New In V0.6.2
+- **Firefox Support**: Added dedicated Firefox build and manifest (Manifest V2 with `sidebar_action`).
+- **Provider Update**: Replaced **Groq** with **Cerebras** in provider presets and UI.
+- **Improvements & Fixes**: General stability improvements.
 
 ## Key Features
 
@@ -49,7 +47,7 @@ Chat Box offers a rich set of functionalities to streamline your AI interactions
 -   **📚 Improved Chat History**: Easily access and manage multiple past conversations with improved reliability.
 -   **⚙️ Flexible API Configuration & Refreshed UI**:
     -   Configure API keys and endpoints for various AI providers in a more intuitive settings panel.
-    -   Supports major providers like **OpenAI, DeepSeek, Claude (Anthropic), Groq**, as well as **Local LLMs (via Ollama)** and **Custom OpenAI-compatible endpoints**.
+    -   Supports major providers like **OpenAI, DeepSeek, Claude (Anthropic), Cerebras**, as well as **Local LLMs (via Ollama)** and **Custom OpenAI-compatible endpoints**.
     -   Load and select from available AI models from your configured provider.
 -   **🚀 Advanced Web Search & Scraping**:
     -   Integrates with **Firecrawl** and **Jina AI** for superior web search results.
@@ -87,6 +85,18 @@ Chat Box offers a rich set of functionalities to streamline your AI interactions
     -   Open Chrome and navigate to `chrome://extensions/`.
     -   Enable "Developer mode" in the top-right corner.
     -   Click "Load unpacked" and select the `dist` directory from this project.
+
+### Firefox (Temporary Install)
+
+1. Build the Firefox bundle:
+   ```bash
+   npm run build:firefox
+   ```
+2. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`.
+3. Click "Load Temporary Add-on…".
+4. Select `dist-firefox/manifest.json`.
+
+Note: Temporary add-ons are removed when Firefox restarts. Re-load via `about:debugging` when needed.
 
 ## Usage
 

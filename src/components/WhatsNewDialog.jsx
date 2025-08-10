@@ -18,24 +18,20 @@ const WhatsNewDialog = ({ open, onOpenChange }) => {
         <div className="mt-4 space-y-4">
           <div className="bg-primary/10 p-4 rounded-lg border">
             <h3 className="font-semibold text-lg text-primary mb-2">
-              Version 0.6.1
+              Version 0.6.2
             </h3>
             <div className="text-sm space-y-2">
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>New Quick Actions: Summarize, Explain, Translate, Rewrite, and Fix Grammar with one click</span>
+                <span>Firefox support: dedicated build and sidebar integration</span>
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Fixed selected text display in user messages</span>
+                <span>Provider update: Groq replaced with Cerebras</span>
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Improved text selection handling with visual indicators</span>
-              </div>
-              <div className="flex items-start space-x-2">
-                <span className="text-green-500 font-bold">✓</span>
-                <span>Enhanced message editing to preserve selected text context</span>
+                <span>General stability improvements</span>
               </div>
             </div>
           </div>

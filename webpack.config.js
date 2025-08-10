@@ -45,6 +45,7 @@ module.exports = {
     new CopyPlugin({
       patterns: [
         { from: 'manifest.json', to: '.' },
+        { from: 'manifest.firefox.json', to: '.' },
         { from: 'assets', to: 'assets' },
         { from: 'src/content/selection.css', to: '.' },
       ],

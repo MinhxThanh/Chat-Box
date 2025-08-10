@@ -8,7 +8,7 @@ import { Save, Loader2, Minus, Download, Upload } from "lucide-react";
 import OpenAIIcon from "../../assets/providers/OpenAI.svg";
 import ClaudeIcon from "../../assets/providers/anthropic.svg";
 import DeepSeekIcon from "../../assets/providers/DeepSeek.svg";
-import GroqIcon from "../../assets/providers/Groq.svg";
+import CerebrasIcon from "../../assets/providers/Cerebras.svg";
 import CustomIcon from "../../assets/providers/Custom.svg";
 import LocalIcon from "../../assets/providers/local.svg";
 
@@ -170,10 +170,10 @@ const ProvidersConfig = ({
       icon: DeepSeekIcon,
     },
     {
-      provider: "groq",
-      name: "Groq",
-      endpoint: "https://api.groq.com/openai/v1",
-      icon: GroqIcon,
+      provider: "cerebras",
+      name: "Cerebras",
+      endpoint: "https://api.cerebras.ai/v1",
+      icon: CerebrasIcon,
     },
     {
       provider: "local",

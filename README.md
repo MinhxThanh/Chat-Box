@@ -6,6 +6,10 @@
     <a href="https://chromewebstore.google.com/detail/chat-box-chat-with-all-ai/hhaaoibkigonnoedcocnkehipecgdodm" target="_blank">
        <img src="https://img.shields.io/badge/Chrome%20Web%20Store-Chat%20Box-red?style=for-the-badge&logo=chromewebstore&logoColor=white" alt="Chrome Web Store" />
     </a>
+    <a href="https://addons.mozilla.org/en-US/firefox/addon/chat-box-chat-with-all-ai/"
+    target="_blank">
+        <img src="https://img.shields.io/badge/Firefox%20ADD%20ONS-Chat%20Box-red?style=for-the-badge&logo=firefoxbrowser&logoColor=red" alt="Firefox ADD-ONS" />
+    </a>
     <a href="https://github.com/MinhxThanh/Chat-Box" target="_blank">
        <img src="https://img.shields.io/badge/GitHub-Chat%20Box-black?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" />
     </a>

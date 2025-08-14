@@ -1,5 +1,7 @@
 <div align="center">
-<img width="214" alt="Screenshot 2025-06-07 at 11 50 22" src="https://github.com/user-attachments/assets/3ed1045a-9bf0-46b5-bf15-677cb7076d02" />
+    
+![Animated Logo](https://github.com/user-attachments/assets/66ae2da5-cd5c-4d75-8bee-e468a83dbaba)
+
 </div>
 
 <div align="center">

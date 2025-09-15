@@ -64,7 +64,9 @@
   ];
 
   // Function to create and show the dot
-  function showSelectionDot(x, y) {
+  function showSelectionDot(x, y, options = {}) {
+    const { isInput = false } = options;
+
     if (!selectionDot) {
       selectionDot = document.createElement("div");
       selectionDot.className = "chatbox-selection-dot";
@@ -73,7 +75,7 @@
       // Create the main button icon
       selectionDot.innerHTML = `
         <button id="chatbox-button-icon" class="chatbox-button-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="250" height="250" viewBox="0,0,256,256">
+          <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="100%" height="100%" viewBox="0,0,256,256" preserveAspectRatio="xMidYMid meet">
             <g fill="#ffffff" fill-rule="nonzero" stroke="none" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal">
               <g transform="scale(5.12,5.12)">
                 <path d="M49.726,25.312l-18,-19c-0.003,-0.003 -0.007,-0.004 -0.01,-0.007c-0.074,-0.076 -0.165,-0.133 -0.26,-0.182c-0.022,-0.011 -0.038,-0.031 -0.061,-0.041c-0.074,-0.032 -0.158,-0.038 -0.24,-0.051c-0.05,-0.008 -0.095,-0.031 -0.146,-0.031c-0.001,0 -0.003,0.001 -0.005,0.001c-0.001,0 -0.003,-0.001 -0.004,-0.001h-11.852c-0.026,0 -0.048,0.013 -0.074,0.015c-0.025,-0.002 -0.048,-0.015 -0.074,-0.015c-0.002,0 -0.005,0 -0.007,0c-0.272,0.002 -0.532,0.114 -0.719,0.312l-17.98,18.98c-0.001,0.001 -0.001,0.001 -0.002,0.002l-0.017,0.018c-0.038,0.041 -0.056,0.091 -0.086,0.136c-0.039,0.058 -0.085,0.11 -0.112,0.176c-0.098,0.241 -0.098,0.51 0,0.751c0.027,0.066 0.073,0.118 0.112,0.176c0.03,0.045 0.048,0.095 0.086,0.136l0.017,0.018c0.001,0.001 0.001,0.001 0.002,0.002l17.98,18.979c0.188,0.2 0.451,0.354 0.726,0.312c0.026,0 0.049,-0.013 0.074,-0.015c0.026,0.004 0.048,0.017 0.074,0.017h11.632c0.039,0 0.072,-0.018 0.11,-0.022c0.038,0.004 0.072,0.022 0.11,0.022c0.002,0 0.005,0 0.007,0c0.272,-0.002 0.532,-0.114 0.719,-0.312l18,-19c0.366,-0.386 0.366,-0.99 0,-1.376zM46.675,25h-8.725l-11.575,-11.869l4.611,-4.69zM36.023,25.888c-0.003,0.029 -0.016,0.054 -0.017,0.083l-11.033,11.412l-11.172,-11.462l11.172,-11.364zM28.615,8l-3.636,3.698l-3.607,-3.698zM19.011,8.443l4.565,4.682l-11.674,11.875h-8.577zM19.008,43.554l-15.683,-16.554h8.675c0.018,0 0.032,-0.009 0.05,-0.01l11.532,11.832zM21.358,44l3.621,-3.745l3.65,3.745zM30.99,43.557l-4.621,-4.741l11.424,-11.816h8.882z"></path>
@@ -98,6 +100,13 @@
 
         const img = document.createElement("img");
         img.src = chrome.runtime.getURL(icon);
+        // Hard constrain to avoid host page CSS overrides
+        img.width = 20;
+        img.height = 20;
+        img.style.width = '20px';
+        img.style.height = '20px';
+        img.style.maxWidth = 'none';
+        img.style.objectFit = 'contain';
         button.appendChild(img);
 
         navContainer.appendChild(button);
@@ -114,18 +123,67 @@
       });
 
       // On click of the main icon, open sidebar
-      selectionDot.addEventListener("click", (e) => {
-        // Only open sidebar if NOT clicking on nav buttons
-        if (!e.target.closest(".chatbox-nav-button")) {
-          chrome.runtime.sendMessage({ action: "openSidebar" });
-          hideSelectionDot();
-        }
-      });
+      // selectionDot.addEventListener("click", (e) => {
+      //   // Only open sidebar if NOT clicking on nav buttons
+      //   if (!e.target.closest(".chatbox-nav-button")) {
+      //     chrome.runtime.sendMessage({ action: "openSidebar" });
+      //     hideSelectionDot();
+      //   }
+      // });
     }
 
-    selectionDot.style.left = `${x - 10}px`;
-    selectionDot.style.top = `${y - 44}px`;
+    let finalX = x - 10;
+    let finalY = y - 44; // Default 'top-left'
+
+    // For inputs, if the default top position is too close to the edge of the viewport,
+    // move the dot to appear below the selection instead.
+    if (isInput) {
+      const yRelativeToViewport = y - window.scrollY;
+      // If the top of the selection is less than the height of the dot, it risks being clipped.
+      if (yRelativeToViewport < 52) {
+        finalY = y + 32; // place it 12px below the input's top line
+      }
+    }
+
+    selectionDot.style.left = `${finalX}px`;
+    selectionDot.style.top = `${finalY}px`;
     selectionDot.style.display = "block";
+
+    // Adjust nav position based on viewport bounds (avoid clipping at top)
+    adjustSelectionNavPosition();
+  }
+
+  // Ensure the action nav stays inside the viewport
+  function adjustSelectionNavPosition() {
+    if (!selectionDot) return;
+    const nav = selectionDot.querySelector(".chatbox-selection-nav");
+    if (!nav) return;
+
+    const rect = selectionDot.getBoundingClientRect();
+    // Approx nav height including padding/shadow
+    const approxNavHeight = 56;
+    if (rect.top < approxNavHeight + 8) {
+      nav.classList.add("nav-below");
+    } else {
+      nav.classList.remove("nav-below");
+    }
+
+    // Horizontal adjustment to prevent clipping on the left edge
+    // const navWidth = nav.offsetWidth; // This is unreliable as nav is hidden initially
+    const approxNavWidth = 180; // ~5 buttons * 32px width + gaps + padding
+    const dotCenter = rect.left + rect.width / 2;
+    const viewportWidth = window.innerWidth;
+
+    // Reset horizontal alignment first
+    nav.classList.remove("nav-align-left", "nav-align-right");
+
+    if (dotCenter < approxNavWidth / 2) {
+      // Too close to the left edge, align left
+      nav.classList.add("nav-align-left");
+    } else if (dotCenter + approxNavWidth / 2 > viewportWidth - 8) {
+      // Too close to the right edge (with 8px margin), align right
+      nav.classList.add("nav-align-right");
+    }
   }
 
   // Function to create and show the quick panel
@@ -876,7 +934,7 @@
     }
 
     // A brief delay to ensure the selection is registered
-    setTimeout(() => {
+    setTimeout(async () => {
       let selectedText = '';
       let rect = null;
 
@@ -910,8 +968,20 @@
       }
 
       if (selectedText && selectedText.length > 0 && rect) {
+        // Respect Quick Actions settings (enabled + blocklist)
+        const allowed = await shouldShowQuickActions();
+        if (!allowed) {
+          hideSelectionDot();
+          sendTextToSidebar(null);
+          return;
+        }
+
+        const isInput =
+          target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
         // Position the dot at the top-left of the selection
-        showSelectionDot(rect.left + window.scrollX, rect.top + window.scrollY);
+        showSelectionDot(rect.left + window.scrollX, rect.top + window.scrollY, {
+          isInput,
+        });
         sendTextToSidebar(selectedText);
       } else {
         // If nothing is selected, ensure the dot is hidden and the sidebar is cleared
@@ -930,20 +1000,30 @@
         return;
       }
 
-      setTimeout(() => {
+      setTimeout(async () => {
         const start = target.selectionStart;
         const end = target.selectionEnd;
         
         if (start !== end && start !== null && end !== null) {
           const selectedText = target.value.substring(start, end).trim();
           if (selectedText && selectedText.length > 0) {
+            // Respect Quick Actions settings (enabled + blocklist)
+            const allowed = await shouldShowQuickActions();
+            if (!allowed) {
+              hideSelectionDot();
+              sendTextToSidebar(null);
+              return;
+            }
+
             // Get the bounding rect of the input element
             const inputRect = target.getBoundingClientRect();
             const rect = {
               left: inputRect.left,
               top: inputRect.top
             };
-            showSelectionDot(rect.left + window.scrollX, rect.top + window.scrollY);
+            showSelectionDot(rect.left + window.scrollX, rect.top + window.scrollY, {
+              isInput: true,
+            });
             sendTextToSidebar(selectedText);
           } else {
             hideSelectionDot();
@@ -953,6 +1033,48 @@
       }, 10);
     }
   });
+
+  // Determine if Quick Actions should show on this page
+  async function shouldShowQuickActions() {
+    try {
+      if (!(typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local)) {
+        return true;
+      }
+      const result = await new Promise((resolve, reject) => {
+        chrome.storage.local.get(['aiChatSettings'], (res) => {
+          if (chrome.runtime && chrome.runtime.lastError) {
+            resolve({});
+          } else {
+            resolve(res || {});
+          }
+        });
+      });
+
+      const cfg = result.aiChatSettings || {};
+      const enabled = typeof cfg.quickActionsEnabled === 'boolean' ? cfg.quickActionsEnabled : true;
+      if (!enabled) return false;
+
+      const blocklist = Array.isArray(cfg.quickActionsBlocklist) ? cfg.quickActionsBlocklist : [];
+      if (blocklist.length === 0) return true;
+
+      const url = window.location.href.toLowerCase();
+      const host = window.location.hostname.toLowerCase();
+
+      for (const entry of blocklist) {
+        if (!entry) continue;
+        const e = String(entry).trim().toLowerCase();
+        if (!e) continue;
+        if (e.startsWith('http://') || e.startsWith('https://')) {
+          if (url.includes(e)) return false;
+        } else {
+          if (host.includes(e)) return false;
+        }
+      }
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
 
   // Language preference functions
   async function loadLanguagePreference() {
@@ -1722,4 +1844,95 @@ Here is the text to correct:
       sendTextToSidebar(null);
     }
   });
+  
+  // Extract meaningful content from the current page (non-YouTube pages)
+  function extractPageContent() {
+    const contentSelectors = [
+      'article', 'main', '.content', '#content',
+      '.post', '.article', '.entry-content',
+      '[role="main"]', '.main-content'
+    ];
+
+    let mainContent = '';
+
+    // Try to find main content containers first
+    for (const selector of contentSelectors) {
+      const elements = document.querySelectorAll(selector);
+      if (elements && elements.length > 0) {
+        elements.forEach(el => {
+          mainContent += el.innerText + '\n\n';
+        });
+        break;
+      }
+    }
+
+    // If no content found using selectors, extract from body with filtering
+    if (!mainContent.trim()) {
+      const textNodes = [];
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: function(node) {
+            if (node.parentElement) {
+              const style = window.getComputedStyle(node.parentElement);
+              const isHidden = style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
+              const isScript = node.parentElement.tagName === 'SCRIPT' || node.parentElement.tagName === 'STYLE';
+              if (isHidden || isScript) return NodeFilter.FILTER_REJECT;
+              if (node.textContent.trim().length > 20) return NodeFilter.FILTER_ACCEPT;
+            }
+            return NodeFilter.FILTER_SKIP;
+          }
+        }
+      );
+
+      let node;
+      while (node = walker.nextNode()) {
+        textNodes.push(node.textContent.trim());
+      }
+      mainContent = textNodes.join('\n\n');
+    }
+
+    // Clean up the content
+    mainContent = mainContent
+      .replace(/\s+/g, ' ')
+      .replace(/\n\s*\n/g, '\n\n')
+      .trim();
+
+    const maxLength = 15000;
+    if (mainContent.length > maxLength) {
+      mainContent = mainContent.substring(0, maxLength) +
+        '\n\n[Content truncated due to length. Extracted first ' + maxLength + ' characters]';
+    }
+
+    return mainContent || document.body.innerText.substring(0, maxLength);
+  }
+
+  // Respond to getPageContent for non-YouTube pages
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      try {
+        if (message && message.action === 'getPageContent') {
+          const isYouTube = window.location.hostname.includes('youtube.com') &&
+            window.location.pathname.includes('/watch') &&
+            window.location.href.includes('v=');
+          if (isYouTube) {
+            // Let the YouTube-specific content script handle it
+            return;
+          }
+          const pageContent = extractPageContent();
+          sendResponse({
+            title: document.title,
+            url: window.location.href,
+            content: pageContent
+          });
+          return true;
+        }
+      } catch (e) {
+        try {
+          sendResponse({ title: document.title, url: window.location.href, error: 'Failed to extract page content: ' + (e && e.message ? e.message : String(e)) });
+        } catch (_) {}
+      }
+    });
+  }
 })();

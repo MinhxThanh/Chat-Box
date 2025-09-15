@@ -2,3 +2,5 @@
 node_modules
 dist
 dist-firefox
+dist.zip
+dist-firefox.zip

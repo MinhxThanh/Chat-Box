@@ -108,7 +108,7 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
           "rounded-lg shadow-md",
           isUser
             ? "max-w-[80%] text-primary-foreground"
-            : "w-full p-2 text-secondary-foreground mt-2 bg-ai-background"
+            : "w-full p-2 text-secondary-foreground mt-2 bg-[var(--ai-background)]"
         )}
       >
         {isUser ? (
@@ -164,7 +164,7 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
                 </>
               ) : (
                 // Handle simple string content
-                <div className="rounded-2xl shadow-md bg-primary px-4 py-2 text-[13px]">
+                <div className="rounded-2xl shadow-md bg-[#303030] px-4 py-2 text-[13px]">
                   {textContent && <Markdown content={displayMessage} />}
                 </div>
               )}

@@ -32,6 +32,7 @@
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "turndown": "^7.2.1",
     "youtube-transcript": "^1.2.1"
   },
   "devDependencies": {

@@ -28,10 +28,12 @@ https://github.com/user-attachments/assets/bc03e6d0-92cb-4bea-81fb-1c67293cf79d
 
 ***Chat Box*** is a browser extension that streamlines your online experience by integrating AI chat, advanced web search, document interaction, and more into a convenient sidebar.
 
-## What's New In V0.6.2
-- **Firefox Support**: Added dedicated Firefox build and manifest (Manifest V2 with `sidebar_action`).
-- **Provider Update**: Replaced **Groq** with **Cerebras** in provider presets and UI.
-- **Improvements & Fixes**: General stability improvements.
+## What's New In V0.7.1
+- **Improved Chat Experience**: General UI and usability enhancements.
+- **Improved Quick Actions**: More reliable and faster quick actions.
+- **Custom Models**: Added support for custom models via manual entry.
+- **Advanced Settings**: New controls for Quick Actions and a website blocklist.
+- **Quick Summary**: Added a button to quickly summarize web pages using a DOM scraper.
 
 ## Key Features
 
@@ -153,6 +155,7 @@ You can configure Chat Box to work with local LLMs like those served by [Ollama]
 -   **UI & Styling**: Tailwind CSS, Shadcn UI, Radix UI, Lucide React
 -   **Browser Extension**: Chrome Extension APIs (Manifest V3)
 -   **Local Database**: Dexie (IndexedDB)
+-   **AI**: Called using an OpenAI-compatible REST API.
 
 
 ## License

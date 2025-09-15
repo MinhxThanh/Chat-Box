@@ -6,6 +6,20 @@
   padding: 8px; /* p-3 equivalent */
   z-index: 99999;
   display: none; /* Hidden by default */
+  /* Prevent host page typography from affecting layout */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1;
+  box-sizing: border-box;
+  /* allow nav to render outside the dot */
+  overflow: visible;
+}
+
+/* Ensure consistent box model and typography inside our UI */
+.chatbox-selection-dot *,
+.chatbox-base-quick-panel * {
+  box-sizing: border-box;
+  font-family: inherit;
 }
 
 .chatbox-button-icon {
@@ -20,6 +34,16 @@
   justify-content: center;
   transition: all 0.2s ease-in-out;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  line-height: 1; /* avoid line-height affecting layout */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Hard constrain the SVG inside the main button to prevent host overrides */
+.chatbox-button-icon svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
 }
 
 .chatbox-selection-nav {
@@ -38,6 +62,25 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+/* When near viewport left, align nav to the dot's left edge to keep it visible */
+.chatbox-selection-nav.nav-align-left {
+  left: 0;
+  transform: translateX(0);
+}
+
+/* When near viewport right, align nav to the dot's right edge */
+.chatbox-selection-nav.nav-align-right {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* When near viewport top, render the nav below the dot to keep it visible */
+.chatbox-selection-nav.nav-below {
+  top: 52px;
+  bottom: auto;
+}
+
 .chatbox-selection-dot:hover .chatbox-selection-nav {
   display: flex;
 }
@@ -52,6 +95,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  line-height: 1; /* normalize */
+  vertical-align: middle;
 }
 
 .chatbox-nav-button:hover {
@@ -66,6 +111,17 @@
 .chatbox-nav-button img {
   width: 20px;
   height: 20px;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  /* defeat aggressive site-wide img rules */
+  width: 20px !important;
+  height: 20px !important;
+  max-width: none !important;
+  transform: none !important;
+  filter: none !important;
+  object-fit: contain;
 }
 
 .chatbox-base-quick-panel {
@@ -85,6 +141,18 @@
   /* Google-specific fixes */
   isolation: isolate;
   contain: layout style paint;
+  /* Typography isolation */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+/* Normalize form controls to our panel typography */
+.chatbox-base-quick-panel button,
+.chatbox-base-quick-panel input {
+  font: inherit;
 }
 
 .quick-panel-resize-handle {
@@ -196,6 +264,7 @@
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 1;
+  line-clamp: 1; /* linter: standard property */
   -webkit-box-orient: vertical;
   text-overflow: ellipsis;
   transition: all 0.2s;
@@ -204,6 +273,7 @@
 .selected-text-display .content.expanded {
   max-height: none;
   -webkit-line-clamp: none;
+  line-clamp: unset; /* linter: standard property */
   overflow: visible;
 }
 

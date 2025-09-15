@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { ToastProvider, ToastViewport, Toast, ToastTitle, ToastDescription, ToastClose } from './ui/toast';
 
 export default function ApiKeyForm() {
   const [firecrawlKey, setFirecrawlKey] = useState('');
   const [jinaKey, setJinaKey] = useState('');
   const [selectedEngine, setSelectedEngine] = useState('default');
   const [error, setError] = useState('');
+  const [toastState, setToastState] = useState({ open: false, title: '', description: '', variant: 'default' });
 
   // Load saved API keys from Chrome storage on component mount
   useEffect(() => {
@@ -57,6 +59,8 @@ export default function ApiKeyForm() {
         localStorage.setItem('searchEngine', JSON.stringify(payload));
       }
       
+      // Show toast
+      setToastState({ open: true, title: 'Search engine', description: 'Settings cleared', variant: 'default' });
       return;
     }
 
@@ -85,12 +89,14 @@ export default function ApiKeyForm() {
       localStorage.setItem('searchEngine', JSON.stringify(payload));
     }
 
-    // Show success feedback
+    // Show success feedback via toast
     setError('');
-    alert(`${selectedEngine.charAt(0).toUpperCase() + selectedEngine.slice(1)} API key saved successfully!`);
+    const engineLabel = selectedEngine.charAt(0).toUpperCase() + selectedEngine.slice(1);
+    setToastState({ open: true, title: 'API Key Saved', description: `${engineLabel} API key saved successfully`, variant: 'default' });
   };
 
   return (
+    <ToastProvider>
     <div>
       <h2 className="text-xl font-bold mb-4 text-gray-100">Web Search Configuration</h2>
       <form onSubmit={handleSubmit}>
@@ -159,6 +165,23 @@ export default function ApiKeyForm() {
           Save Search Engine Settings
         </Button>
       </form>
+      {/* Toasts */}
+      <Toast
+        open={toastState.open}
+        onOpenChange={(open) => setToastState(prev => ({ ...prev, open }))}
+        variant={toastState.variant}
+        duration={3000}
+      >
+        <div className="grid gap-1">
+          <ToastTitle>{toastState.title}</ToastTitle>
+          {toastState.description && (
+            <ToastDescription>{toastState.description}</ToastDescription>
+          )}
+        </div>
+        <ToastClose />
+      </Toast>
+      <ToastViewport />
     </div>
+    </ToastProvider>
   );
 }

@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Message, SystemMessage } from "./Message";
-import { Send, Loader2, Plus, Image, FileText, X, Globe, Square } from "lucide-react";
+import { Send, Loader2, Plus, Image, FileText, X, Globe, Square, ArrowDown, FileScan, Minus } from "lucide-react";
 import { extractTextFromDocument, DocumentContext } from "./DocumentProcessor";
 import { YouTubeContext } from "./YouTubeContext";
-import { WELCOME_MESSAGE } from "../utils/prompts";
+import { WELCOME_MESSAGE, FAST_SUMMARY_PROMPT} from "../utils/prompts";
 import { getAllPrompts } from '../db/promptDb';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { saveImage, getImage } from "../utils/db";
+import { scrapeMultipleUrls } from "../utils/urlScraper";
+import { getSearchEngineConfig } from "../utils/searchUtils";
+import TurndownService from 'turndown';
 
 export const Chat = ({
   conversation,
@@ -48,6 +51,9 @@ export const Chat = ({
   // YouTube content state
   const [youtubeInfo, setYoutubeInfo] = useState(null);
   const [blockYoutubeDetection, setBlockYoutubeDetection] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [detectedUrls, setDetectedUrls] = useState([]);
   const [initialSystemMessage, setInitialSystemMessage] = useState(null);
   const [showPrompts, setShowPrompts] = useState(false);
   const [prompts, setPrompts] = useState([]);
@@ -63,6 +69,11 @@ export const Chat = ({
   }, []);
   const [selectedText, setSelectedText] = useState(null);
   const [firstMessageSent, setFirstMessageSent] = useState(false);
+  // Quick summary UI for active http(s) tab
+  const [quickSummaryUrl, setQuickSummaryUrl] = useState(null);
+  const [showQuickSummary, setShowQuickSummary] = useState(false);
+  const [isQuickSummaryLoading, setIsQuickSummaryLoading] = useState(false);
+  const quickSummaryDismissedRef = useRef(false);
   
   // Track if YouTube detection has been attempted for current conversation
   const youtubeDetectionAttempted = useRef(null);
@@ -108,6 +119,7 @@ export const Chat = ({
   const fileDropdownRef = useRef(null);
   const fileInputRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const messagesContainerRef = useRef(null);
 
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
@@ -131,6 +143,107 @@ export const Chat = ({
     };
   }, []); // Empty dependency array ensures this runs only on mount and unmount
 
+
+  // Detect active http(s) tab and show quick summary pill when sidebar opens
+  useEffect(() => {
+    if (quickSummaryDismissedRef.current) return;
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          const tab = tabs && tabs[0];
+          const url = tab && tab.url;
+          if (url && /^https?:\/\//i.test(url)) {
+            setQuickSummaryUrl(url);
+            setShowQuickSummary(true);
+          }
+        });
+      }
+    } catch (_) {}
+  }, []);
+
+  const handleQuickSummaryClick = async () => {
+    if (isQuickSummaryLoading) return;
+    
+    // Guard: ensure provider is configured before sending
+    if (!apiKey || !endpoint || !model) {
+      setMessages(prev => [...prev, { role: "system", content: "Please configure your provider and select a model in settings before using quick summary." }]);
+      return;
+    }
+
+    setIsQuickSummaryLoading(true);
+
+    try {
+      // User's suggested logic: Check for advanced scraper first.
+      const searchConfig = await getSearchEngineConfig();
+      const hasAdvancedScraper = searchConfig && searchConfig.engine !== 'default' && searchConfig.apiKey;
+
+      if (hasAdvancedScraper) {
+        // If configured, let handleSend do the scraping with the advanced scraper.
+        setShowQuickSummary(false);
+        handleSend(`${FAST_SUMMARY_PROMPT} ${quickSummaryUrl}`);
+        setIsQuickSummaryLoading(false);
+        return;
+      }
+      
+      // Fallback to built-in DOM scraper if no advanced scraper is configured.
+      if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          const tab = tabs && tabs[0];
+          if (!tab || !tab.id) { setIsQuickSummaryLoading(false); return; }
+          const urlForSummary = tab.url || quickSummaryUrl || '';
+          chrome.tabs.sendMessage(tab.id, { action: 'getPageContent' }, (response) => {
+            if (chrome.runtime && chrome.runtime.lastError) {
+              setIsQuickSummaryLoading(false);
+              return;
+            }
+            // If YouTube, load context and send
+            if (response && response.type === 'youtube') {
+              setYoutubeInfo(response);
+              setShowQuickSummary(false);
+              setTimeout(() => { handleSend(`${FAST_SUMMARY_PROMPT} ${response.url || urlForSummary}`); setIsQuickSummaryLoading(false); }, 50);
+              return;
+            }
+
+            // Regular page: convert to Markdown and attach as scraped URL context
+            const pageTitle = (response && response.title) || document.title;
+            const pageUrl = (response && response.url) || urlForSummary;
+            const pageContent = (response && response.content) || '';
+
+            try {
+              const turndown = new TurndownService();
+              // Convert plain text to minimal HTML with line breaks for better markdown output
+              const safeHtml = `<div>${String(pageContent || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>`;
+              const markdown = turndown.turndown(safeHtml);
+
+              // Split into chunks (~4000 chars) for context
+              const CHUNK_SIZE = 4000;
+              const chunks = [];
+              for (let i = 0; i < markdown.length; i += CHUNK_SIZE) {
+                chunks.push({ text: markdown.slice(i, i + CHUNK_SIZE) });
+              }
+
+              setScrapedUrlContent({ url: pageUrl, title: pageTitle, content: markdown });
+              setScrapedUrlChunks(chunks);
+              setShowQuickSummary(false);
+              setTimeout(() => { handleSend(`${FAST_SUMMARY_PROMPT} ${pageUrl}`); setIsQuickSummaryLoading(false); }, 50);
+            } catch (e) {
+              setIsQuickSummaryLoading(false);
+            }
+          });
+        });
+      } else {
+        setIsQuickSummaryLoading(false);
+      }
+    } catch (_) {
+      setIsQuickSummaryLoading(false);
+    }
+  };
+
+  const dismissQuickSummary = useCallback((e) => {
+    try { if (e && e.stopPropagation) e.stopPropagation(); } catch (_) {}
+    quickSummaryDismissedRef.current = true;
+    setShowQuickSummary(false);
+  }, []);
 
   useEffect(() => {
     // Check if conversation.id exists and has changed to reset context
@@ -194,6 +307,28 @@ export const Chat = ({
           }
         }
       }, 100); // Small delay to ensure conversation state is settled
+
+      // Quick Summary pill visibility per conversation:
+      const isBrandNewChat = !(conversation.messages?.length > 0);
+      if (isBrandNewChat) {
+        // Re-enable pill on brand new chat only
+        quickSummaryDismissedRef.current = false;
+        try {
+          if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+              const tab = tabs && tabs[0];
+              const url = tab && tab.url;
+              if (!quickSummaryDismissedRef.current && url && /^https?:\/\//i.test(url)) {
+                setQuickSummaryUrl(url);
+                setShowQuickSummary(true);
+              }
+            });
+          }
+        } catch (_) {}
+      } else {
+        // Hide on existing chats
+        setShowQuickSummary(false);
+      }
       
     } else if (!conversation) {
       setMessages([{ role: "system", content: WELCOME_MESSAGE }]);
@@ -251,6 +386,21 @@ export const Chat = ({
           }
         }
       }, 100); // Small delay to ensure conversation state is settled
+
+      // Treat no conversation as a new context; re-enable pill
+      quickSummaryDismissedRef.current = false;
+      try {
+        if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            const tab = tabs && tabs[0];
+            const url = tab && tab.url;
+            if (!quickSummaryDismissedRef.current && url && /^https?:\/\//i.test(url)) {
+              setQuickSummaryUrl(url);
+              setShowQuickSummary(true);
+            }
+          });
+        }
+      } catch (_) {}
     }
   }, [conversation?.id]); // Rely only on conversation.id for resetting messages and context
 
@@ -258,8 +408,11 @@ export const Chat = ({
 
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Only auto-scroll if not streaming and user is near bottom
+    if (!isStreaming && isNearBottom) {
+      scrollToBottom();
+    }
+  }, [messages, isStreaming, isNearBottom]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -283,6 +436,22 @@ export const Chat = ({
       clearTimeout(handler);
     };
   }, [messages, onUpdateConversation, conversation]);
+
+  // Set up scroll event listener
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll, { passive: true });
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
+
+  // Hide scroll button when streaming ends and user is at bottom
+  useEffect(() => {
+    if (!isStreaming && isNearBottom) {
+      setShowScrollToBottom(false);
+    }
+  }, [isStreaming, isNearBottom]);
 
   useEffect(() => {
     const handleMessage = (message, sender, sendResponse) => {
@@ -319,6 +488,22 @@ export const Chat = ({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const handleScroll = useCallback(() => {
+    if (!messagesContainerRef.current || isStreaming) return;
+
+    const container = messagesContainerRef.current;
+    const scrollTop = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const clientHeight = container.clientHeight;
+
+    // Check if user is near the bottom (within 100px)
+    const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100;
+    setIsNearBottom(isNearBottom);
+
+    // Show scroll to bottom button if user scrolled up and not near bottom
+    setShowScrollToBottom(!isNearBottom && scrollTop > 50);
+  }, [isStreaming]);
+
   const detectUrls = (text) => {
     const urlRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/g;
     return text.match(urlRegex) || [];
@@ -340,132 +525,47 @@ export const Chat = ({
     try {
       setIsScrapingUrl(true);
       setMessages(prev => [...prev, { role: "system", content: `Preparing to scrape web page: ${url}...` }]);
-      const validUrl = url.startsWith('http') ? url : `http://${url}`;
 
-      // Import search utilities
-      const { getSearchEngineConfig, scrapeWebpage } = await import('../utils/searchUtils');
-      const searchConfig = await getSearchEngineConfig();
-
-      // Check if a custom search engine is configured
-      if (!searchConfig || (searchConfig.engine !== 'firecrawl' && searchConfig.engine !== 'jina') || !searchConfig.apiKey) {
-        setIsScrapingUrl(false);
-        setMessages(prev => [...prev, { role: "system", content: `⚠️ No custom search engine configured for web scraping. Please configure Firecrawl or Jina in the settings.` }]);
-        return { success: false, error: 'No custom search engine configured for web scraping. Please configure Firecrawl or Jina in the settings.' };
-      }
-
-      // Update scraping message to show which engine is being used
-      setMessages(prev => [
-        ...prev.filter(m => !(m.role === 'system' && m.content.startsWith('Preparing to scrape'))),
-        { role: "system", content: `Scraping web page using ${searchConfig.engine}: ${url}...` }
-      ]);
-
-      console.log(`Using ${searchConfig.engine} to scrape URL:`, validUrl);
-
-      // Use the configured search engine to scrape the webpage
-      const scrapedContent = await scrapeWebpage(validUrl, { formats: ["markdown", "text"] });
-
-      // Handle different API response structures
-      let content = '';
-      let title = url;
-
-      if (searchConfig.engine === 'firecrawl') {
-        console.log('Firecrawl scrape response:', scrapedContent);
-        // Firecrawl typically returns data with markdown field
-        if (scrapedContent.data) {
-          // Single URL scraping typically returns a single result object
-          const data = scrapedContent.data;
-          if (data.markdown) {
-            content = data.markdown;
-          } else if (data.text) {
-            content = data.text;
-          } else if (data.content) {
-            content = data.content;
-          }
-          title = data.title || data.metadata?.title || url;
-        } else {
-          // Fallback to direct structure
-          if (scrapedContent.markdown) {
-            content = scrapedContent.markdown;
-          } else if (scrapedContent.text) {
-            content = scrapedContent.text;
-          } else if (scrapedContent.content) {
-            content = scrapedContent.content;
-          }
-          title = scrapedContent.title || scrapedContent.metadata?.title || url;
+      // Use the new urlScraper utility
+      const result = await scrapeMultipleUrls([url], {}, (progress) => {
+        if (progress.status === 'scraping') {
+          setMessages(prev => [
+            ...prev.filter(m => !(m.role === 'system' && m.content.startsWith('Preparing to scrape'))),
+            { role: "system", content: `Scraping web page: ${url}...` }
+          ]);
         }
-      } else if (searchConfig.engine === 'jina') {
-        console.log('Jina scrape response:', scrapedContent);
-        // Jina response structure: { data: { title: "...", content: "..." } }
-        if (scrapedContent.data && typeof scrapedContent.data === 'object' && !Array.isArray(scrapedContent.data)) {
-          const dataObj = scrapedContent.data;
-          if (dataObj.content) {
-            content = dataObj.content;
-          } else if (typeof dataObj.text === 'string') {
-            content = dataObj.text;
-          } else if (dataObj.markdown) {
-            content = dataObj.markdown;
-          }
-          title = dataObj.title || url;
-        } else if (scrapedContent.data && Array.isArray(scrapedContent.data) && scrapedContent.data.length > 0) {
-          // Fallback: if .data IS an array (original expectation)
-          console.warn('Jina response .data was an array. Using first element.');
-          const firstItem = scrapedContent.data[0];
-          if (firstItem.content) {
-            content = firstItem.content;
-          } else if (typeof firstItem.text === 'string') {
-            content = firstItem.text;
-          } else if (firstItem.markdown) {
-            content = firstItem.markdown;
-          }
-          title = firstItem.title || url;
-        } else {
-          // Fallback for other unexpected structures or if .data is missing
-          console.warn('Jina response .data is not the expected object or array structure, or is missing. Attempting direct parsing.');
-          if (scrapedContent.content) { // Top-level content
-            content = scrapedContent.content;
-          } else if (typeof scrapedContent.text === 'string') {
-            content = scrapedContent.text;
-          } else if (scrapedContent.markdown) {
-            content = scrapedContent.markdown;
-          }
-          // Ensure title is set if not already set by previous blocks
-          if (!title) { // only set if not already set by previous blocks
-            title = scrapedContent.title || url;
-          }
-        }
+      });
+
+      if (!result.success) {
+        throw new Error(result.errors?.[0]?.error || 'Failed to scrape URL');
       }
 
-      if (!content || content.trim() === '') {
-        throw new Error(`${searchConfig.engine} returned empty content for ${validUrl}`);
-      }
+      const scrapeResult = result.results[0];
+      const chunks = result.chunks;
 
       // Process the content for the UI
-      setScrapedUrlContent({ url: validUrl, title, content });
-      const chunkSize = 3000; // Increased chunk size for better context
-      const overlapSize = 300;
-      const contentChunks = [];
-
-      for (let i = 0; i < content.length; i += (chunkSize - overlapSize)) {
-        contentChunks.push({
-          index: contentChunks.length,
-          text: content.substring(i, i + chunkSize)
-        });
-      }
-      if (contentChunks.length === 0 && content.length > 0) { // Handle case where content is less than chunkSize
-        contentChunks.push({ index: 0, text: content });
-      }
-
-      setScrapedUrlChunks(contentChunks);
+      setScrapedUrlContent({
+        url: scrapeResult.url,
+        title: scrapeResult.title,
+        content: scrapeResult.content
+      });
+      setScrapedUrlChunks(chunks);
 
       setMessages(prev => [
-        ...prev.filter(m => !(m.role === 'system' && m.content.includes('scrape web page'))), // Remove scraping messages
+        ...prev.filter(m => !(m.role === 'system' && m.content.includes('scrape web page'))),
         {
           role: "system",
-          content: `Web page scraped with ${searchConfig.engine}: ${title} (${validUrl})\nContent split into ${contentChunks.length} chunks for analysis.`
+          content: `Web page scraped: ${scrapeResult.title} (${scrapeResult.url})\nContent split into ${chunks.length} chunks for analysis.`
         }
       ]);
 
-      return { success: true, chunks: contentChunks, url: validUrl, title, engine: searchConfig.engine };
+      return {
+        success: true,
+        chunks,
+        url: scrapeResult.url,
+        title: scrapeResult.title,
+        engine: result.engine || 'unknown'
+      };
 
     } catch (error) {
       console.error('Error scraping URL:', error);
@@ -744,12 +844,12 @@ Consider this YouTube video context when responding.`;
   };
 
   const stopStreamingResponse = () => {
-    if (abortControllerRef.current && isStreaming) {
-      abortControllerRef.current.abort();
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort("Stream aborted by user");
       abortControllerRef.current = null;
-      setIsStreaming(false);
-      console.log("Stream aborted by user");
     }
+    setIsLoading(false);
+    setIsStreaming(false);
   };
 
   const processStream = async (stream, initialMessagesSnapshot) => {
@@ -983,6 +1083,11 @@ Consider this YouTube video context when responding.`;
     const value = e.target.value;
     setInput(value);
 
+    // Detect URLs in real-time
+    const urlsInInput = detectUrls(value);
+    const validUrls = urlsInInput.filter(url => isValidUrl(url));
+    setDetectedUrls(validUrls);
+
     if (value.startsWith('/')) {
       const searchTerm = value.substring(1).toLowerCase();
       const filtered = prompts.filter(p => p.command && p.command.toLowerCase().includes(searchTerm));
@@ -1158,10 +1263,10 @@ Consider this YouTube video context when responding.`;
     }
   };
 
-  const handleSend = async () => {
+  const handleSend = async (overrideText = null) => {
     if (isLoading) return;
     // ... (rest of the code remains the same)
-    const originalInputText = input.trim(); // Use this for logic, API, etc.
+    const originalInputText = (overrideText !== null && overrideText !== undefined ? overrideText : input).trim(); // Use this for logic, API, etc.
     
     // Prevent sending an empty message
     if (originalInputText === "" && !selectedText && !uploadedFile && !documentFile && !scrapedUrlContent && !youtubeInfo) {
@@ -1222,11 +1327,12 @@ Consider this YouTube video context when responding.`;
     const inputForProcessing = originalInputText; // Save for processing, input state will be cleared
     setInput("");
     const wasFileUploaded = uploadedFile; // Check if a file was part of this send
-    setUploadedFile(null); 
+    setUploadedFile(null);
     // uploadedImageUrl is revoked by its own useEffect when it changes
     // setUploadedImageUrl(null); // Handled by useEffect cleanup
     setUploadedImageBase64(null);
     setSelectedText(null); // Clear selected text after sending
+    setDetectedUrls([]); // Clear detected URLs after sending
     if (textareaRef.current) adjustTextareaHeight(); // Reset height based on new empty input
 
 
@@ -1311,37 +1417,132 @@ ${chunk.text}
     // --- Handle URL Commands / Detection (if not a file upload scenario primarily) ---
     // This logic might need refinement if a URL is *in addition* to a file upload
     const detectedUrlsInInput = detectUrls(inputForProcessing);
-    const urlCommandMatch = inputForProcessing.match(/^\[(summary|summarize|analyze|scrape)\s+(https?:\/\/[^\s]+|www\.[^\s]+)\]$/i);
+    // Match URL commands with multiple URLs: [command url1 and url2] or [command url1, url2]
+    const urlCommandMatch = inputForProcessing.match(/^\[(summary|summarize|analyze|scrape)\s+(.+?)\]$/i);
     let urlToProcess = null;
     let isUrlCommand = false;
     let urlCommandAction = "analyze"; // Default action
 
     if (urlCommandMatch) {
         urlCommandAction = urlCommandMatch[1].toLowerCase();
-        const potentialUrl = urlCommandMatch[2];
-        if (isValidUrl(potentialUrl)) {
-            urlToProcess = potentialUrl;
+        const urlText = urlCommandMatch[2];
+
+        // Extract all URLs from the command text
+        const urlsInCommand = detectUrls(urlText).filter(url => isValidUrl(url));
+        if (urlsInCommand.length > 0) {
+            urlToProcess = urlsInCommand.length === 1 ? urlsInCommand[0] : urlsInCommand;
             isUrlCommand = true;
         }
-    } else if (detectedUrlsInInput.length > 0 && isValidUrl(detectedUrlsInInput[0]) && !wasFileUploaded) { // Only auto-scrape if no file was uploaded with this message
-        urlToProcess = detectedUrlsInInput[0];
-    }
-    
-    if (urlToProcess) {
-        // Add the user's original message that contained the URL/command to the API messages
-        messagesToSendToAPI.push({ role: "user", content: inputForProcessing }); // The user's actual input
-
-        const scrapeResult = await scrapeUrlContent(urlToProcess); // scrapeUrlContent now adds its own system messages for UI
-        if (scrapeResult.success && scrapeResult.chunks && scrapeResult.chunks.length > 0) {
-            const allChunksText = scrapeResult.chunks.map(c => c.text).join("\n\n---\n\n");
-            const urlContextForAI = `System Note: The user has requested to process the URL: ${scrapeResult.title} (${scrapeResult.url}).
-Action: ${isUrlCommand ? urlCommandAction : 'general query about URL'}.
-Full web page content:\n${allChunksText}`;
-            messagesToSendToAPI.push({ role: "system", content: urlContextForAI });
-            // The user's *original message* (inputForProcessing) is already in messagesToSendToAPI.
-            // The AI will see the URL context and then the user's message.
+    } else if (detectedUrlsInInput.length > 0 && !wasFileUploaded) { // Only auto-scrape if no file was uploaded with this message
+        // Process all detected URLs for general queries
+        const validUrls = detectedUrlsInInput.filter(url => isValidUrl(url)).slice(0, 3); // Limit to 3 URLs to avoid overwhelming
+        if (validUrls.length > 0) {
+            urlToProcess = validUrls; // Array of URLs for multi-URL processing
         }
-        // Proceed to fetchStreamingResponse even if scraping failed, AI might comment on the error or original query
+    }
+
+    // Handle URL processing (single URL command or multiple auto-detected URLs)
+    let urlsToProcess = [];
+    if (urlToProcess) {
+        urlsToProcess = Array.isArray(urlToProcess) ? urlToProcess : [urlToProcess];
+    }
+
+    if (urlsToProcess.length > 0) {
+        // Add the user's original message that contained the URL/command to the API messages
+        messagesToSendToAPI.push({ role: "user", content: inputForProcessing });
+
+        // If only one URL, use single-URL flow for clearer UX and messages
+        if (urlsToProcess.length === 1) {
+            const singleUrl = urlsToProcess[0];
+            setMessages(prev => [...prev, { role: "system", content: `🔍 Processing URL: ${singleUrl}...` }]);
+
+            const singleResult = await scrapeUrlContent(singleUrl);
+
+            if (singleResult.success && singleResult.chunks && singleResult.chunks.length > 0) {
+                const allChunksText = singleResult.chunks.map(c => c.text).join("\n\n---\n\n");
+                const urlContextForAI = `System Note: The user has requested to process the URL: ${singleResult.title} (${singleResult.url}).\nAction: ${isUrlCommand ? urlCommandAction : 'general query about URL'}.\nFull web page content:\n${allChunksText}`;
+                messagesToSendToAPI.push({ role: "system", content: urlContextForAI });
+            } else {
+                const errorMessage = `⚠️ Failed to scrape URL: ${singleUrl}`;
+                setMessages(prev => [...prev, { role: "system", content: errorMessage }]);
+                messagesToSendToAPI.push({ role: "system", content: errorMessage });
+            }
+
+        } else {
+            // Show initial progress message for multiple URLs
+            setMessages(prev => [...prev, {
+                role: "system",
+                content: `🔍 Processing ${urlsToProcess.length} URLs...`
+            }]);
+
+            try {
+                // Use the new urlScraper utility to process multiple URLs at once
+                const scrapeResults = await scrapeMultipleUrls(urlsToProcess, {}, (progress) => {
+                    setMessages(prev => [
+                        ...prev.filter(m => !(m.role === 'system' && (m.content.includes('Processing') || m.content.includes('Scraping')))),
+                        {
+                            role: "system",
+                            content: `🔍 Processing URLs: ${progress.current}/${progress.total} completed`
+                        }
+                    ]);
+                });
+
+                // Process successful results
+                if (scrapeResults.success && scrapeResults.chunks && scrapeResults.chunks.length > 0) {
+                    const allChunksText = scrapeResults.chunks.map(c => c.text).join("\n\n---\n\n");
+
+                    // Create context message mentioning all processed URLs
+                    const processedUrls = scrapeResults.results
+                        .filter(r => r.success)
+                        .map(r => `${r.title} (${r.url})`)
+                        .join(', ');
+
+                    const urlContextForAI = `System Note: The user has requested to process ${urlsToProcess.length} URL(s): ${processedUrls}.
+Action: ${isUrlCommand ? urlCommandAction : 'general query about URLs'}.
+Successfully processed ${scrapeResults.successfulUrls}/${scrapeResults.totalUrls} URLs.
+Full web page content:\n${allChunksText}`;
+
+                    messagesToSendToAPI.push({ role: "system", content: urlContextForAI });
+
+                    // Update UI with final success message
+                    setMessages(prev => [
+                        ...prev.filter(m => !(m.role === 'system' && (m.content.includes('Processing') || m.content.includes('Scraping')))),
+                        {
+                            role: "system",
+                            content: `✅ Successfully scraped ${scrapeResults.successfulUrls}/${scrapeResults.totalUrls} URLs. Content split into ${scrapeResults.chunks.length} chunks for analysis.`
+                        }
+                    ]);
+
+                    // Set the scraped content for the UI (use the combined content)
+                    if (scrapeResults.successfulUrls > 0) {
+                        const firstSuccessful = scrapeResults.results.find(r => r.success);
+                        setScrapedUrlContent({
+                            url: firstSuccessful.url,
+                            title: `Multiple URLs (${scrapeResults.successfulUrls} processed)`,
+                            content: scrapeResults.content
+                        });
+                        setScrapedUrlChunks(scrapeResults.chunks);
+                    }
+                }
+
+                // Handle failed URLs
+                if (scrapeResults.failedUrls > 0) {
+                    const failedUrls = scrapeResults.errors.map(e => e.url).join(', ');
+                    const errorMessage = `⚠️ Failed to scrape ${scrapeResults.failedUrls} URL(s): ${failedUrls}`;
+                    setMessages(prev => [...prev, { role: "system", content: errorMessage }]);
+                    messagesToSendToAPI.push({ role: "system", content: errorMessage });
+                }
+
+            } catch (error) {
+                console.error('Error in multi-URL scraping:', error);
+                const errorMessage = `❌ Error processing URLs: ${error.message}`;
+                setMessages(prev => [...prev, { role: "system", content: errorMessage }]);
+                messagesToSendToAPI.push({ role: "system", content: errorMessage });
+            }
+        }
+
+        // The user's original message is already in messagesToSendToAPI
+        // The AI will see all URL contexts and then the user's message
     } else if (searchEnabled && typeof inputForProcessing === 'string' && inputForProcessing) {
         // --- AI Enhanced Search (only if not a URL command and search is enabled) ---
         let currentSearchSystemMessage = `🧠 Analyzing your query with AI to improve search for: "${inputForProcessing}"...`;
@@ -1862,7 +2063,10 @@ Full web page content:\n${allChunksText}`;
 
   return (
     <div className="flex flex-col h-full relative z-10 bg-background">
-      <div className="flex-1 overflow-y-auto no-scrollbar py-4 px-2 space-y-4 relative bg-background z-10 min-h-[200px]">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto no-scrollbar py-4 px-2 space-y-4 relative bg-background z-10 min-h-[200px]"
+      >
         {!firstMessageSent && messages.length === 1 && messages[0].role === 'system' && messages[0].content === WELCOME_MESSAGE && (
           <div className="absolute inset-0 flex items-center justify-center z-0 pointer-events-none">
             <div className="text-center text-muted-foreground">
@@ -1891,23 +2095,6 @@ Full web page content:\n${allChunksText}`;
             videoInfo={youtubeInfo}
             onClear={clearYoutubeContext}
           />
-        )}
-
-        {/* Show scraped URL context if active */}
-        {scrapedUrlContent && scrapedUrlChunks.length > 0 && scrapedUrlChunks[0] && (
-          <div className="bg-background p-3 border border-border mt-2 rounded-lg shadow-sm">
-            <div className="flex justify-between items-center mb-2">
-              <h4 className="text-sm font-medium truncate" title={scrapedUrlContent.title}>Scraped: {scrapedUrlContent.title}</h4>
-              <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => removeScrapedContent(scrapedUrlContent.url)}>
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-            <a href={scrapedUrlContent.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline mb-2 block truncate" title={scrapedUrlContent.url}>{scrapedUrlContent.url}</a>
-
-            <div className="text-sm max-h-32 overflow-y-auto p-2 border border-input rounded-md bg-muted/30 text-muted-foreground no-scrollbar">
-              {scrapedUrlChunks.map(c => c.text).join("\n\n---\n\n")}
-            </div>
-          </div>
         )}
 
         {/* Display loading indicator for document processing */}
@@ -1970,8 +2157,92 @@ Full web page content:\n${allChunksText}`;
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Quick Summary Button */}
+      {showQuickSummary && quickSummaryUrl && !youtubeInfo && (
+        <div className="relative">
+          <div className="absolute bottom-2 left-2 z-50">
+            <div className="static flex items-center gap-1">
+              <button
+                onClick={handleQuickSummaryClick}
+                className="px-3 py-1.5 rounded-full bg-primary/10 border border-primary/30 text-primary text-xs hover:bg-primary/20 transition-colors flex items-center gap-2 shadow-sm"
+                title={`Summary ${quickSummaryUrl}`}
+              >
+                {isQuickSummaryLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileScan className="h-4 w-4" />
+                )}
+                <span className="truncate max-w-[180px]">Summary {quickSummaryUrl}</span>
+              </button>
+              <button
+                onClick={dismissQuickSummary}
+                className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-transparent hover:bg-muted/40 text-muted-foreground hover:text-foreground border border-border flex items-center justify-center"
+                title="Hide"
+                aria-label="Hide quick summary"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scroll to Bottom Button */}
+      {showScrollToBottom && (
+        <div className="relative">
+          <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 z-50">
+            <button
+              onClick={() => {
+                scrollToBottom();
+                setShowScrollToBottom(false);
+              }}
+              className="border bg-[#212121] text-primary-foreground rounded-full w-8 h-8 shadow-lg hover:bg-[#212121]/90 transition-colors duration-200 flex items-center justify-center"
+              title="Scroll to bottom"
+            >
+              <ArrowDown className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Input Area */}
       <div className="border-t border-border p-4 bg-background">
+        {/* URL Detection Panel */}
+        {detectedUrls.length > 0 && (
+          <div className="mb-3 p-3 bg-[#303030]/90 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              <span className="text-sm font-medium text-primary">
+                {detectedUrls.length === 1 ? 'URL detected:' : `${detectedUrls.length} URLs detected:`}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {detectedUrls.map((url, index) => (
+                <div key={index} className="flex items-center gap-2 p-2 bg-[#303030] rounded border border-[#4a4a4a]">
+                  <div className="flex-1 text-sm text-slate-100 font-mono break-all">
+                    {url}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="text-xs text-red-500 px-2 py-1 rounded-full hover:text-red-700 duration-200 transition-colors"
+                    onClick={() => setDetectedUrls(prev => prev.filter((_, i) => i !== index))}
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 text-xs text-primary">
+              {detectedUrls.length === 1
+                ? 'This URL will be scraped and analyzed with your message.'
+                : 'These URLs will be scraped and analyzed with your message (max 3 URLs).'
+              }
+            </div>
+          </div>
+        )}
+
         {/* Toolbar: Model selector & Search Toggle */}
         <div className="flex items-center mb-2 text-xs text-muted-foreground">
           <div className="flex-1 flex gap-2 items-center">
@@ -2118,7 +2389,7 @@ Full web page content:\n${allChunksText}`;
                 </Button>
               ) : (
                 <Button
-                  onClick={handleSend}
+                  onClick={() => handleSend()}
                   disabled={isLoading || (!input.trim() && !selectedText && !uploadedFile && !documentFile && !scrapedUrlContent && !youtubeInfo)}
                   size="icon"
                   className="h-8 w-8 rounded-full bg-primary hover:bg-primary/80 transition-colors text-primary-foreground"

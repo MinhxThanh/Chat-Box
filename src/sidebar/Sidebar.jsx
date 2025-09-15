@@ -4,17 +4,18 @@ import { Chat } from '../components/Chat';
 import { Button } from '../components/ui/button';
 import { DeleteConfirmDialog } from '../components/Message';
 import ApiKeyForm from '../components/ApiKeyForm';
-import { getAllConversations, saveConversation, deleteConversation } from '../utils/db';
+import { getAllConversations, saveConversation, deleteConversation, getPreference, savePreference } from '../utils/db';
 import "../globals.css";
 import { Settings, PlusCircle, X, Trash2, History, Plus, ArrowLeftFromLine, Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import CustomPrompts from '../components/CustomPrompts';
 import ProvidersConfig from '../components/ProvidersConfig';
+import AdvancedSettings from '../components/AdvancedSettings';
 import WhatsNewDialog from '../components/WhatsNewDialog';
 
 // Utility function to safely convert any value to a string for rendering
 const safeToString = (value) => {
-  if (value === null || value === undefined) return '';
+  if (value === null || value === undefined) return 'undefined';
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   // For objects, arrays, etc., convert to a JSON string for safety
@@ -23,6 +24,12 @@ const safeToString = (value) => {
   } catch (e) {
     return '[Object]';
   }
+};
+
+// Utility function to generate a safe React key
+const generateSafeKey = (conversation, index) => {
+  const id = conversation?.id || `temp-${index}`;
+  return `history-${id}-${index}`;
 };
 
 // Sidebar component
@@ -42,34 +49,45 @@ const Sidebar = () => {
         models: []
       }
     ],
-    selectedModel: null
+    selectedModel: null,
+    quickActionsEnabled: true,
+    quickActionsBlocklist: []
   });
   const [conversations, setConversations] = useState([]); // Loaded asynchronously from IndexedDB
   const [activeConversation, setActiveConversation] = useState(null); // Match the initial ID
   const [isConversationsLoading, setIsConversationsLoading] = useState(true);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
 
-  // Load settings from localStorage on initial render
+  // Load settings from IndexedDB on initial render
   useEffect(() => {
-    const savedSettings = localStorage.getItem('aiChatSettings');
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    } else {
-      // Default settings with OpenAI as the selected provider
-      setSettings({
-        providers: [
-          {
-            selectedProvider: true,
-            provider: 'openai',
-            name: 'OpenAI',
-            endpoint: 'https://api.openai.com/v1',
-            apiKey: '',
-            models: []
-          }
-        ],
-        selectedModel: null
-      });
-    }
+    const loadSettings = async () => {
+      try {
+        const stored = await getPreference('aiChatSettings', null);
+        if (stored) {
+          setSettings(stored);
+        } else {
+          // Default settings with OpenAI as the selected provider
+          setSettings({
+            providers: [
+              {
+                selectedProvider: true,
+                provider: 'openai',
+                name: 'OpenAI',
+                endpoint: 'https://api.openai.com/v1',
+                apiKey: '',
+                models: []
+              }
+            ],
+            selectedModel: null,
+            quickActionsEnabled: true,
+            quickActionsBlocklist: []
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load settings from IDB', e);
+      }
+    };
+    loadSettings();
   }, []);
 
   // Load conversations from IndexedDB on mount
@@ -114,10 +132,10 @@ const Sidebar = () => {
     });
   }, [conversations]);
 
-  // Save settings to localStorage and chrome.storage.local whenever they change
+  // Save settings to IndexedDB and chrome.storage.local whenever they change
   useEffect(() => {
-    // Save to localStorage for web access
-    localStorage.setItem('aiChatSettings', JSON.stringify(settings));
+    // Save to IndexedDB
+    savePreference('aiChatSettings', settings);
 
     // Also save to chrome.storage.local for content script access
     if (chrome.storage && chrome.storage.local) {
@@ -208,6 +226,7 @@ const Sidebar = () => {
             <TabsTrigger value="providers">Providers</TabsTrigger>
             <TabsTrigger value="search">Search</TabsTrigger>
             <TabsTrigger value="prompts">Prompts</TabsTrigger>
+            <TabsTrigger value="advanced">Advanced</TabsTrigger>
           </TabsList>
           {/* Providers configuration */}
           <TabsContent value="providers">
@@ -233,6 +252,11 @@ const Sidebar = () => {
             <div className="mt-2">
               <CustomPrompts />
             </div>
+          </TabsContent>
+
+          {/* Advanced configure */}
+          <TabsContent value="advanced">
+            <AdvancedSettings settings={settings} onSettingsChange={setSettings} />
           </TabsContent>
 
         </Tabs>
@@ -366,9 +390,9 @@ const Sidebar = () => {
       </Button>
 
       <div className="space-y-2">
-        {conversations.map((conversation) => (
+        {conversations.map((conversation, index) => (
           <div
-            key={`history-${safeToString(conversation.id)}`}
+            key={generateSafeKey(conversation, index)}
             className={`p-3 rounded-md ${safeToString(activeConversation) === safeToString(conversation.id) ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
           >
             <div className="flex items-center justify-between">
@@ -548,10 +572,10 @@ const Sidebar = () => {
 
       {/* Right Navigation */}
       <div className="w-14 border-l border-border flex flex-col items-center py-4 space-y-4">
-        <Button variant="ghost" size="icon" onClick={() => chrome.runtime.sendMessage({ action: 'closeSidebar' })} title="Close Sidebar">
+        {/* <Button variant="ghost" size="icon" onClick={() => chrome.runtime.sendMessage({ action: 'closeSidebar' })} title="Close Sidebar">
           <X className="h-4 w-4" />
         </Button>
-        <hr />
+        <hr /> */}
 
         <Button
           variant={activeView === 'history' ? "default" : "ghost"}

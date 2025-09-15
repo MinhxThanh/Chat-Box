@@ -2,7 +2,15 @@ import React, { useState, useRef } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Save, Loader2, Minus, Download, Upload } from "lucide-react";
+import { Save, Loader2, Minus, Download, Upload, Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "./ui/dialog";
 
 // Import provider icons
 import OpenAIIcon from "../../assets/providers/OpenAI.svg";
@@ -34,6 +42,8 @@ const ProvidersConfig = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const [isAddModelOpen, setIsAddModelOpen] = useState(false);
+  const [newModelId, setNewModelId] = useState("");
 
   // Export providers configuration
   const handleExportProviders = () => {
@@ -391,6 +401,56 @@ const ProvidersConfig = ({
     });
   };
 
+  // Open dialog to add a custom model id
+  const openAddModelDialog = () => {
+    if (!selectedProvider) {
+      showAlert("Provider Required", "Please select a provider first");
+      return;
+    }
+    setNewModelId("");
+    setIsAddModelOpen(true);
+  };
+
+  // Confirm adding a custom model id to the current provider
+  const handleConfirmAddModel = () => {
+    if (!selectedProvider) {
+      showAlert("Provider Required", "Please select a provider first");
+      return;
+    }
+
+    const modelId = (newModelId || "").trim();
+    if (!modelId) {
+      showAlert("Model ID Required", "Please enter a valid model ID.");
+      return;
+    }
+
+    const existingModels = Array.isArray(selectedProvider.models)
+      ? selectedProvider.models
+      : [];
+    if (existingModels.includes(modelId)) {
+      showAlert("Already Exists", `Model '${modelId}' is already in the list.`);
+      return;
+    }
+
+    const providerType = selectedProvider.provider;
+    const updatedProviders = (settings.providers || []).map((provider) => {
+      if (provider.provider === providerType) {
+        const current = Array.isArray(provider.models) ? provider.models : [];
+        return { ...provider, models: [...current, modelId] };
+      }
+      return provider;
+    });
+
+    onSettingsChange({
+      ...settings,
+      providers: updatedProviders,
+    });
+
+    showAlert("Success", `Added model '${modelId}' to ${selectedProvider.name}.`);
+    setIsAddModelOpen(false);
+    setNewModelId("");
+  };
+
   const handleSaveSettings = () => {
     // Only validate the current provider
     const provider = getSelectedProvider();
@@ -513,15 +573,25 @@ const ProvidersConfig = ({
       <div className="space-y-2">
         <div className="flex justify-between items-center">
           <Label>Models</Label>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={loadModels}
-            disabled={loading || !selectedProvider?.apiKey}
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Load Models
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openAddModelDialog}
+              disabled={!selectedProvider}
+            >
+              <Plus className="h-4 w-4 mr-2" /> Custom
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadModels}
+              disabled={loading || !selectedProvider?.apiKey}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Load Models
+            </Button>
+          </div>
         </div>
 
         {selectedProvider?.models?.length > 0 ? (
@@ -561,6 +631,38 @@ const ProvidersConfig = ({
           </div>
         )}
       </div>
+
+      {/* Add Custom Model Dialog */}
+      <Dialog open={isAddModelOpen} onOpenChange={setIsAddModelOpen}>
+        <div className="relative p-6">
+          <DialogHeader>
+            <DialogTitle>Add Custom Model</DialogTitle>
+            <DialogClose />
+          </DialogHeader>
+          <DialogDescription>
+            Enter a model ID to add it to the current provider.
+          </DialogDescription>
+          <div className="mt-4 space-y-2">
+            <Label htmlFor="custom-model-id">Model ID</Label>
+            <Input
+              id="custom-model-id"
+              value={newModelId}
+              onChange={(e) => setNewModelId(e.target.value)}
+              placeholder="e.g. gpt-4o-mini, llama3-70b, deepseek-chat"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleConfirmAddModel();
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddModelOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmAddModel}>Add</Button>
+          </DialogFooter>
+        </div>
+      </Dialog>
 
       <Button onClick={handleSaveSettings} className="w-full mt-4">
         <Save className="h-4 w-4 mr-2" /> Save Settings

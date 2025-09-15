@@ -108,7 +108,7 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
           "rounded-lg shadow-md",
           isUser
             ? "max-w-[80%] text-primary-foreground"
-            : "w-full p-2 text-secondary-foreground mt-2 bg-[var(--ai-background)]"
+            : "w-full p-2 text-secondary-foreground mt-2 bg-[hsl(var(--ai-background))]"
         )}
       >
         {isUser ? (

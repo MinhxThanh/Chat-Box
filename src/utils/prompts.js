@@ -5,5 +5,4 @@ export const FAST_SUMMARY_PROMPT = "Based on the provided text from the web cont
 + "- 5–7 key points"
 + "- Important numbers/definitions"
 + "- Actionable takeaways"
-
 + "Follow the source closely; do not add outside info.";

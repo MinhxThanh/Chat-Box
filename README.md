@@ -34,7 +34,7 @@ https://github.com/user-attachments/assets/bc03e6d0-92cb-4bea-81fb-1c67293cf79d
 
 ***Chat Box*** is a browser extension that streamlines your online experience by integrating AI chat, advanced web search, document interaction, and more into a convenient sidebar.
 
-## What's New In V0.7.1
+## What's New In V0.7.2
 - **Improved Chat Experience**: General UI and usability enhancements.
 - **PDF support**: PDF support with HTML→Markdown conversion and chunking, using Turndown.
 - Saved API keys moved to IndexedDB (from local storage).

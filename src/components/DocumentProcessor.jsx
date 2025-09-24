@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import mammoth from 'mammoth';
+import TurndownService from 'turndown';
 
 // The pdf.worker.mjs file should be manually copied to your public folder.
-GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
+try {
+  // Try to resolve worker relative to this bundle (works in extension and web)
+  const base = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL
+    ? chrome.runtime.getURL('')
+    : '';
+  GlobalWorkerOptions.workerSrc = (base ? base : '/') + 'pdf.worker.mjs';
+} catch (_) {
+  GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
+}
 
 // Semantic chunking function
 const splitIntoChunks = (text, maxChunkSize = 2000, overlapSize = 200) => {
@@ -53,38 +62,112 @@ const splitIntoChunks = (text, maxChunkSize = 2000, overlapSize = 200) => {
   return chunks;
 };
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function textContentToHtml(content) {
+  // Group items into lines by Y coordinate and then join text
+  const items = (content && Array.isArray(content.items)) ? content.items.slice() : [];
+  if (items.length === 0) return '';
+  // Sort by Y (desc), then X (asc)
+  items.sort((a, b) => {
+    const ay = (a.transform && a.transform[5]) || 0;
+    const by = (b.transform && b.transform[5]) || 0;
+    if (by !== ay) return by - ay;
+    const ax = (a.transform && a.transform[4]) || 0;
+    const bx = (b.transform && b.transform[4]) || 0;
+    return ax - bx;
+  });
+
+  const lines = [];
+  const epsilon = 2; // pixel tolerance for same line
+  let currentY = null;
+  let buffer = [];
+  for (const it of items) {
+    const y = Math.round((it.transform && it.transform[5]) || 0);
+    if (currentY === null) {
+      currentY = y;
+    }
+    if (Math.abs(y - currentY) > epsilon) {
+      if (buffer.length > 0) lines.push(buffer.join(' '));
+      buffer = [it.str];
+      currentY = y;
+    } else {
+      buffer.push(it.str);
+    }
+  }
+  if (buffer.length > 0) lines.push(buffer.join(' '));
+
+  return lines.map(line => `<p>${escapeHtml(line)}</p>`).join('');
+}
+
 // Main document processing function
 export const extractTextFromDocument = async (file) => {
   try {
-    let text = '';
+    let markdown = '';
+    const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
     
-    if (file.type === 'application/pdf') {
+    if (file.type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'))) {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await getDocument(arrayBuffer).promise;
-      
+      let html = '<div class="pdf-document">';
+      let plainTextFallback = '';
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        text += content.items.map(item => item.str).join(' ') + '\n';
+        const pageHtml = textContentToHtml(content);
+        html += `<section class="pdf-page" data-page="${i}">${pageHtml}</section>`;
+        plainTextFallback += (content.items || []).map(item => item.str).join(' ') + '\n';
+      }
+      html += '</div>';
+      markdown = turndown.turndown(html).trim();
+      // Fallback to plain text if markdown is empty (e.g., scanned PDFs)
+      if (!markdown) {
+        markdown = plainTextFallback.trim();
       }
     }
     else if (file.type.includes('wordprocessingml') || file.name.endsWith('.docx') || file.type === 'application/msword' || file.name.endsWith('.doc')) {
       const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      text = result.value.replace(/\n{3,}/g, '\n\n');
+      // Try full HTML conversion first for richer structure
+      try {
+        const htmlResult = await mammoth.convertToHtml({ arrayBuffer });
+        const html = `<div>${htmlResult.value}</div>`;
+        markdown = turndown.turndown(html).trim();
+      } catch (_) {}
+      // Fallback to raw text if HTML path produced nothing
+      if (!markdown) {
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        const normalized = result.value.replace(/\n{3,}/g, '\n\n');
+        const html = `<div>${escapeHtml(normalized).split('\n\n').map(p => `<p>${p}</p>`).join('')}</div>`;
+        markdown = turndown.turndown(html).trim();
+        if (!markdown) markdown = normalized.trim();
+      }
     }
     else {
-      text = await new Promise((resolve, reject) => {
+      const raw = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
         reader.onerror = reject;
         reader.readAsText(file);
       });
+      const html = `<pre>${escapeHtml(raw)}</pre>`;
+      markdown = turndown.turndown(html).trim();
+      if (!markdown) markdown = String(raw || '').trim();
     }
 
-    const estimatedTotalTokens = Math.ceil(text.length / 4); // Simple character-based estimation (1 token ~ 4 chars)
-    const chunks = splitIntoChunks(text);
+    // Ensure we have at least a placeholder if nothing could be extracted
+    if (!markdown) {
+      markdown = '[No extractable text found. This file may be scanned or image-based.]';
+    }
+
+    const estimatedTotalTokens = Math.ceil(markdown.length / 4); // Simple character-based estimation (1 token ~ 4 chars)
+    const chunks = splitIntoChunks(markdown);
     return {
+      text: markdown,
       chunks,
       metadata: {
         filename: file.name,
@@ -158,7 +241,7 @@ export const DocumentContext = ({ documentName, documentContent, totalChunks, on
         </div>
       </div>
       
-      <div className={`text-muted-foreground ${isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`}>
+      <div className={`text-muted-foreground overflow-hidden ${isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`}>
         {displayContent}
       </div>
       

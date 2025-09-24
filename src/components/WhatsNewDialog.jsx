@@ -18,7 +18,7 @@ const WhatsNewDialog = ({ open, onOpenChange }) => {
         <div className="mt-4 space-y-4">
           <div className="bg-primary/10 p-4 rounded-lg border">
             <h3 className="font-semibold text-lg text-primary mb-2">
-              Version 0.7.1
+              Version 0.7.2
             </h3>
             <div className="text-sm space-y-2">
               <div className="flex items-start space-x-2">
@@ -27,19 +27,11 @@ const WhatsNewDialog = ({ open, onOpenChange }) => {
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Improved Quick Actions</span>
+                <span>PDF support: HTML → Markdown conversion and smart chunking</span>
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Added support for custom models via manual entry</span>
-              </div>
-              <div className="flex items-start space-x-2">
-                <span className="text-green-500 font-bold">✓</span>
-                <span>New Advanced Settings to control Quick Actions and set up a website blocklist</span>
-              </div>
-              <div className="flex items-start space-x-2">
-                <span className="text-green-500 font-bold">✓</span>
-                <span>Added Quick Summary Button</span>
+                <span>Saved API keys moved to IndexedDB (from local storage)</span>
               </div>
             </div>
           </div>

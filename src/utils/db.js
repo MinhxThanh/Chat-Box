@@ -83,3 +83,8 @@ export async function getPreference(key, defaultValue = null) {
   const value = await db.get(PREFERENCES_STORE_NAME, key);
   return value !== undefined ? value : defaultValue;
 }
+
+export async function deletePreference(key) {
+  const db = await getDB();
+  return db.delete(PREFERENCES_STORE_NAME, key);
+}

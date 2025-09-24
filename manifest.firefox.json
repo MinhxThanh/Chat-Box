@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Chat Box – Chat with all AI models",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "AI chat, advanced web search, document interaction, and more into a convenient sidebar.",
   "browser_action": {
     "default_icon": {

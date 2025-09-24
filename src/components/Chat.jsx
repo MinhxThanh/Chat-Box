@@ -46,6 +46,7 @@ export const Chat = ({
   const [documentFile, setDocumentFile] = useState(null);
   const [documentContent, setDocumentContent] = useState(null);
   const [isProcessingDocument, setIsProcessingDocument] = useState(false);
+  const [activeChunkIndex, setActiveChunkIndex] = useState(0);
   const [searchEnabled, setSearchEnabled] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
   // YouTube content state
@@ -852,13 +853,13 @@ Consider this YouTube video context when responding.`;
     setIsStreaming(false);
   };
 
-  const processStream = async (stream, initialMessagesSnapshot) => {
+  const processStream = async (stream, initialMessagesSnapshot, meta = {}) => {
     if (!stream) return;
     const reader = stream.getReader();
     let accumulatedContent = "";
     // Add a placeholder for the streaming AI response immediately
     // Use the snapshot of messages *before* this response started
-    setMessages([...initialMessagesSnapshot, { role: "assistant", content: "" }]);
+    setMessages([...initialMessagesSnapshot, { role: "assistant", content: "", model: meta.model || model || null, provider: meta.providerName || null }]);
 
     try {
       setIsLoading(true); // Should already be true, but ensure
@@ -882,7 +883,8 @@ Consider this YouTube video context when responding.`;
                 setMessages(prevMessages => {
                   const updatedMessages = [...prevMessages];
                   if (updatedMessages.length > 0 && updatedMessages[updatedMessages.length - 1].role === 'assistant') {
-                    updatedMessages[updatedMessages.length - 1] = { role: "assistant", content: accumulatedContent };
+                    const last = updatedMessages[updatedMessages.length - 1];
+                    updatedMessages[updatedMessages.length - 1] = { ...last, content: accumulatedContent };
                   }
                   return updatedMessages;
                 });
@@ -901,8 +903,9 @@ Consider this YouTube video context when responding.`;
         setMessages(prev => {
           const lastMsg = prev[prev.length - 1];
           if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === accumulatedContent) { // If stream ended mid-way
-            lastMsg.content += `\n[Error reading full stream: ${error.message}]`;
-            return [...prev];
+            const updated = [...prev];
+            updated[updated.length - 1] = { ...lastMsg, content: lastMsg.content + `\n[Error reading full stream: ${error.message}]` };
+            return updated;
           }
           return [...prev, { role: "system", content: `Error processing stream: ${error.message}` }];
         });
@@ -912,7 +915,8 @@ Consider this YouTube video context when responding.`;
           const updatedMessages = [...prev];
           if (updatedMessages.length > 0 && updatedMessages[updatedMessages.length - 1].role === 'assistant') {
             // Add a small note that the response was stopped
-            updatedMessages[updatedMessages.length - 1].content += " [Response stopped by user]";
+            const last = updatedMessages[updatedMessages.length - 1];
+            updatedMessages[updatedMessages.length - 1] = { ...last, content: (last.content || '') + " [Response stopped by user]" };
           }
           return updatedMessages;
         });
@@ -942,21 +946,32 @@ Consider this YouTube video context when responding.`;
       );
 
       const modelToUse = model || "Default";
+      const providerName = (() => {
+        if (availableModels && typeof availableModels === 'object') {
+          for (const [prov, list] of Object.entries(availableModels)) {
+            if (Array.isArray(list) && list.includes(modelToUse)) return prov;
+          }
+          const keys = Object.keys(availableModels);
+          if (keys.length > 0) return keys[0];
+        }
+        return null;
+      })();
       // console.log("API Request Payload (Regular Fallback):", JSON.stringify({ model: modelToUse, messages: filteredMessages, max_tokens: 2000, temperature: 0.7 }, null, 2));
       const response = await fetch(completionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
         body: JSON.stringify({ model: modelToUse, messages: filteredMessages, max_tokens: 2000, temperature: 0.5 })
       });
-      const data = await response.json().catch(() => ({ error: { message: response.statusText } }));
-      if (!response.ok || data.error) {
-        return { error: data.error?.message || `HTTP Error: ${response.status}` };
-      } else {
-        return { content: data.choices?.[0]?.message?.content || "No response received from API." };
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: { message: response.statusText } }));
+        return { error: errData.error?.message || `HTTP Error: ${response.status}` };
       }
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+      return { content, meta: { model: modelToUse, providerName } };
     } catch (error) {
       console.error("Error in fetchRegularResponse:", error);
-      return { error: `API communication error (fallback): ${error.message}` };
+      return { error: `API communication error: ${error.message}` };
     }
   };
 
@@ -1607,7 +1622,17 @@ Full web page content:\n${allChunksText}`;
 
     const streamResult = await fetchStreamingResponse(messagesToSendToAPI);
     if (streamResult.stream) {
-        await processStream(streamResult.stream, snapshotForStream);
+        const providerName = (() => {
+          if (availableModels && typeof availableModels === 'object') {
+            for (const [prov, list] of Object.entries(availableModels)) {
+              if (Array.isArray(list) && list.includes(model || "Default")) return prov;
+            }
+            const keys = Object.keys(availableModels);
+            if (keys.length > 0) return keys[0];
+          }
+          return null;
+        })();
+        await processStream(streamResult.stream, snapshotForStream, { model: model || "Default", providerName });
     } else { 
         // Fallback to regular response if streaming failed or returned an error object
         setMessages(prev => [...prev, {role: "system", content: `Streaming failed: ${streamResult.error || 'Unknown error'}. Attempting regular response...`}]);
@@ -1615,7 +1640,7 @@ Full web page content:\n${allChunksText}`;
         if (regularResult.error) {
             setMessages(prev => [...prev, { role: "system", content: `Error: ${regularResult.error}` }]);
         } else if (regularResult.content) {
-            setMessages(prev => [...prev, { role: "assistant", content: regularResult.content }]);
+            setMessages(prev => [...prev, { role: "assistant", content: regularResult.content, model: regularResult.meta?.model || model || null, provider: regularResult.meta?.providerName || null }]);
         }
         setIsLoading(false); // Ensure loading is false on fallback
     }
@@ -2326,7 +2351,7 @@ Full web page content:\n${allChunksText}`;
                       <Button variant="ghost" size="sm" className="w-full text-left flex items-center justify-start gap-2 hover:bg-accent h-8 text-popover-foreground" onClick={() => fileInputRef.current?.click()}><Image className="h-4 w-4 text-indigo-500" /><span className="text-xs">Upload Image</span></Button>
                     </div>
                     <div>
-                      <input type="file" id="document-upload-input" accept=".txt,.doc,.docx,.html,.css,.js,.md,.json" className="hidden" onChange={(e) => handleFileUpload(e, 'document')} />
+                      <input type="file" id="document-upload-input" accept=".pdf,.txt,.doc,.docx,.html,.css,.js,.md,.json" className="hidden" onChange={(e) => handleFileUpload(e, 'document')} />
                       <Button variant="ghost" size="sm" className="w-full text-left flex items-center justify-start gap-2 hover:bg-accent h-8 text-popover-foreground" onClick={() => document.getElementById('document-upload-input')?.click()} disabled={isProcessingDocument}>
                         {isProcessingDocument ? (<Loader2 className="h-4 w-4 text-emerald-500 animate-spin" />) : (<FileText className="h-4 w-4 text-emerald-500" />)}
                         <span className="text-xs">{isProcessingDocument ? 'Processing...' : 'Upload Document'}</span></Button>

@@ -65,26 +65,51 @@ const Sidebar = () => {
         const stored = await getPreference('aiChatSettings', null);
         if (stored) {
           setSettings(stored);
-        } else {
-          // Default settings with OpenAI as the selected provider
-          setSettings({
-            providers: [
-              {
-                selectedProvider: true,
-                provider: 'openai',
-                name: 'OpenAI',
-                endpoint: 'https://api.openai.com/v1',
-                apiKey: '',
-                models: []
-              }
-            ],
-            selectedModel: null,
-            quickActionsEnabled: true,
-            quickActionsBlocklist: []
-          });
+          return;
         }
+
+        // Try to migrate from chrome.storage.local or localStorage (one-time)
+        let migrated = null;
+        try {
+          if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            migrated = await new Promise((resolve) => {
+              chrome.storage.local.get(['aiChatSettings'], (res) => resolve(res?.aiChatSettings || null));
+            });
+          }
+        } catch (_) {}
+
+        if (!migrated) {
+          try {
+            const ls = localStorage.getItem('aiChatSettings');
+            if (ls) migrated = JSON.parse(ls);
+          } catch (_) {}
+        }
+
+        if (migrated && migrated.providers) {
+          setSettings(migrated);
+          await savePreference('aiChatSettings', migrated);
+          try { localStorage.removeItem('aiChatSettings'); } catch (_) {}
+          return;
+        }
+
+        // Default settings with OpenAI as the selected provider
+        setSettings({
+          providers: [
+            {
+              selectedProvider: true,
+              provider: 'openai',
+              name: 'OpenAI',
+              endpoint: 'https://api.openai.com/v1',
+              apiKey: '',
+              models: []
+            }
+          ],
+          selectedModel: null,
+          quickActionsEnabled: true,
+          quickActionsBlocklist: []
+        });
       } catch (e) {
-        console.error('Failed to load settings from IDB', e);
+        console.error('Failed to load settings', e);
       }
     };
     loadSettings();
@@ -132,21 +157,9 @@ const Sidebar = () => {
     });
   }, [conversations]);
 
-  // Save settings to IndexedDB and chrome.storage.local whenever they change
+  // Save settings to IndexedDB whenever they change
   useEffect(() => {
-    // Save to IndexedDB
     savePreference('aiChatSettings', settings);
-
-    // Also save to chrome.storage.local for content script access
-    if (chrome.storage && chrome.storage.local) {
-      try {
-        chrome.storage.local.set({ aiChatSettings: settings }, () => {
-          console.log('Settings synced to chrome.storage.local');
-        });
-      } catch (error) {
-        console.error('Error syncing settings to chrome.storage:', error);
-      }
-    }
   }, [settings]);
 
   // Check if user should see the "What's New" dialog

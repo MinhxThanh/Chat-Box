@@ -1,5 +1,37 @@
 // This background script manages the side panel
 
+import { openDB } from 'idb';
+
+const DB_NAME = 'AiChatDatabase';
+const PREFERENCES_STORE_NAME = 'preferences';
+const DB_VERSION = 3;
+
+async function getDB() {
+  return openDB(DB_NAME, DB_VERSION, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains(PREFERENCES_STORE_NAME)) {
+        db.createObjectStore(PREFERENCES_STORE_NAME);
+      }
+    },
+  });
+}
+
+async function idbGetPreference(key, defaultValue = null) {
+  const db = await getDB();
+  const v = await db.get(PREFERENCES_STORE_NAME, key);
+  return v !== undefined ? v : defaultValue;
+}
+
+async function idbSetPreference(key, value) {
+  const db = await getDB();
+  await db.put(PREFERENCES_STORE_NAME, value, key);
+}
+
+async function idbDeletePreference(key) {
+  const db = await getDB();
+  await db.delete(PREFERENCES_STORE_NAME, key);
+}
+
 // Cross-browser API wrapper
 const api = typeof browser !== 'undefined' ? browser : chrome;
 
@@ -121,6 +153,18 @@ function toggleSidebar(tabId, shouldOpen) {
   }
 }
 
+// Utility to safely send messages to tabs without console errors if no receiver exists
+function safeSendMessage(tabId, message) {
+  try {
+    api.tabs.sendMessage(tabId, message, () => {
+      // Swallow 'Receiving end does not exist' errors
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.lastError) {
+        // no-op
+      }
+    });
+  } catch (_) {}
+}
+
 // Function to force-close by sending close signal to all tabs (for legacy support)
 function forceCloseViaTabs() {
   // Mark as closed in our state
@@ -132,9 +176,7 @@ function forceCloseViaTabs() {
     tabs.forEach(tab => {
       // Only attempt to send messages to http/https tabs
       if (tab.url && (tab.url.startsWith('http:') || tab.url.startsWith('https:'))) {
-        api.tabs.sendMessage(tab.id, {
-          action: 'forceSidebarClose'
-        });
+        safeSendMessage(tab.id, { action: 'forceSidebarClose' });
       }
     });
   });
@@ -198,10 +240,7 @@ function broadcastSidebarStatus() {
     tabs.forEach(tab => {
       // Only attempt to send messages to http/https tabs
       if (tab.url && (tab.url.startsWith('http:') || tab.url.startsWith('https:'))) {
-        api.tabs.sendMessage(tab.id, {
-          action: 'sidebarStatusChanged',
-          isOpen: sidebarOpen
-        });
+        safeSendMessage(tab.id, { action: 'sidebarStatusChanged', isOpen: sidebarOpen });
       }
     });
   });
@@ -271,11 +310,27 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   
   if (message.action === "getSettings") {
-    // Get settings from chrome.storage
-    api.storage.local.get('aiChatSettings', (result) => {
-      sendResponse(result.aiChatSettings || null);
-    });
-    return true; // Required to use sendResponse asynchronously
+    (async () => {
+      const settings = await idbGetPreference('aiChatSettings', null);
+      sendResponse(settings);
+    })();
+    return true;
+  }
+
+  if (message.action === "setSettings") {
+    (async () => {
+      await idbSetPreference('aiChatSettings', message.payload);
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
+  if (message.action === "removeSettings") {
+    (async () => {
+      await idbDeletePreference('aiChatSettings');
+      sendResponse({ ok: true });
+    })();
+    return true;
   }
   
   return true;
@@ -321,15 +376,4 @@ api.tabs.onActivated.addListener((activeInfo) => {
 // When the extension is installed or updated
 api.runtime.onInstalled.addListener((details) => {
   console.log("Extension installed or updated:", details.reason);
-  
-  // Set initial settings if none exist
-  if (details.reason === "install") {
-    const defaultSettings = {
-      apiKey: 'no-api-key',
-      endpoint: 'http://localhost:11434',
-      models: [],
-      selectedModel: 'gemma3'
-    };
-    api.storage.local.set({ aiChatSettings: defaultSettings });
-  }
 });

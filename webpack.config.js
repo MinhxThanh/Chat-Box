@@ -48,6 +48,9 @@ module.exports = {
         { from: 'manifest.firefox.json', to: '.' },
         { from: 'assets', to: 'assets' },
         { from: 'src/content/selection.css', to: '.' },
+        // pdf.js worker (support both min and non-min variants depending on installed package)
+        { from: 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs', to: 'pdf.worker.mjs', noErrorOnMissing: true },
+        { from: 'node_modules/pdfjs-dist/build/pdf.worker.mjs', to: 'pdf.worker.mjs', noErrorOnMissing: true },
       ],
     }),
   ],

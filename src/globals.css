@@ -88,7 +88,7 @@ pre code {
  
 @layer base {
   :root {
-    --user-message: 0 0% 19%;
+    --user-message: 0 0% 19%; /* 303030 */
     --ai-background: 300 3% 8%;
     /* --background: 240 10% 3.9%; */
     --background: 240 3% 7%;

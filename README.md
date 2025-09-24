@@ -32,10 +32,8 @@ https://github.com/user-attachments/assets/bc03e6d0-92cb-4bea-81fb-1c67293cf79d
 
 ## What's New In V0.7.1
 - **Improved Chat Experience**: General UI and usability enhancements.
-- **Improved Quick Actions**: More reliable and faster quick actions.
-- **Custom Models**: Added support for custom models via manual entry.
-- **Advanced Settings**: New controls for Quick Actions and a website blocklist.
-- **Quick Summary**: Added a button to quickly summarize web pages using a DOM scraper.
+- **PDF support**: PDF support with HTML→Markdown conversion and chunking, using Turndown.
+- Saved API keys moved to IndexedDB (from local storage).
 
 ## Key Features
 
@@ -64,7 +62,7 @@ Chat Box offers a rich set of functionalities to streamline your AI interactions
     -   Leverage AI (including **Local LLMs**) to refine search queries or process search results for enhanced information gathering.
     -   Scrape and summarize content directly from URLs to use as context in your chat.
 -   **📄 Document Chat Powerhouse**:
-    -   Upload and interact with various document types including DOCX, TXT, HTML, CSS, JS, MD, and JSON.
+    -   Upload and interact with various document types including PDF, DOCX, TXT, HTML, CSS, JS, MD, and JSON.
     -   Utilizes semantic chunking to handle large documents effectively.
     -   View document context (name, size, estimated tokens) directly in the chat interface.
 -   **🖼️ Multimedia & Contextual Awareness**:

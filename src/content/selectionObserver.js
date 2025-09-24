@@ -587,13 +587,13 @@
     }
   }
 
-  // Function to load available models from chrome storage
+  // Function to load available models from settings
   function loadAvailableModels() {
-    if (chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get(["aiChatSettings"], (result) => {
-        if (result.aiChatSettings && result.aiChatSettings.providers) {
+    if (chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ action: 'getSettings' }, (settings) => {
+        if (settings && settings.providers) {
           const modelsMap = {};
-          result.aiChatSettings.providers.forEach((provider) => {
+          settings.providers.forEach((provider) => {
             if (
               provider.apiKey &&
               provider.models &&
@@ -603,7 +603,7 @@
             }
           });
           availableModels = modelsMap;
-          selectedModel = result.aiChatSettings.selectedModel || null;
+          selectedModel = settings.selectedModel || null;
           updateModelDropdown();
         }
       });
@@ -747,49 +747,30 @@
   function selectModel(model) {
     selectedModel = model;
 
-    // Update storage and find the provider that owns this model
-    if (chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get(["aiChatSettings"], (result) => {
-        const settings = result.aiChatSettings || {};
-        settings.selectedModel = model;
-        
-        // Find which provider owns this model and set it as selected
-        if (settings.providers && Array.isArray(settings.providers)) {
-          // First, unselect all providers
-          settings.providers.forEach(provider => {
-            provider.selectedProvider = false;
-          });
-          
-          // Find the provider that owns the selected model and select it
-          const modelOwner = settings.providers.find(provider => 
-            provider.models && Array.isArray(provider.models) && 
-            provider.models.includes(model)
-          );
-          
-          if (modelOwner) {
-            modelOwner.selectedProvider = true;
-            console.log(`Switched to provider: ${modelOwner.name} for model: ${model}`);
-          } else {
-            // Fallback: if we can't find the model owner, keep the current selected provider
-            console.warn(`Could not find provider for model: ${model}. Keeping current provider selection.`);
-          }
+    if (chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ action: 'getSettings' }, (settings) => {
+        const cfg = settings || {};
+        cfg.selectedModel = model;
+
+        if (cfg.providers && Array.isArray(cfg.providers)) {
+          cfg.providers.forEach(p => { p.selectedProvider = false; });
+          const modelOwner = cfg.providers.find(p => Array.isArray(p.models) && p.models.includes(model));
+          if (modelOwner) modelOwner.selectedProvider = true;
         }
-        
-        chrome.storage.local.set({ aiChatSettings: settings });
+
+        chrome.runtime.sendMessage({ action: 'setSettings', payload: cfg }, () => {});
       });
     }
 
-    // Update display
     updateModelDropdown();
 
-    // Close dropdown
     const modelDropdownMenu = quickPanel.querySelector(".model-dropdown-menu");
     if (modelDropdownMenu) {
       modelDropdownMenu.classList.remove("open");
       const searchInput = quickPanel.querySelector(".model-search-input");
       if (searchInput) {
         searchInput.value = "";
-        filterModels(""); // Reset filter
+        filterModels("");
       }
     }
   }
@@ -1037,17 +1018,9 @@
   // Determine if Quick Actions should show on this page
   async function shouldShowQuickActions() {
     try {
-      if (!(typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local)) {
-        return true;
-      }
-      const result = await new Promise((resolve, reject) => {
-        chrome.storage.local.get(['aiChatSettings'], (res) => {
-          if (chrome.runtime && chrome.runtime.lastError) {
-            resolve({});
-          } else {
-            resolve(res || {});
-          }
-        });
+      const result = await new Promise((resolve) => {
+        if (!chrome.runtime || !chrome.runtime.sendMessage) return resolve({});
+        chrome.runtime.sendMessage({ action: 'getSettings' }, (cfg) => resolve({ aiChatSettings: cfg || {} }));
       });
 
       const cfg = result.aiChatSettings || {};
@@ -1315,23 +1288,14 @@ Here is the text to correct:
   // API call function to send action to AI
   async function callAI(action, selectedText, conversationHistory = null) {
     try {
-      // Check extension context first
       if (!isExtensionContextValid()) {
         throw new Error('Extension context invalidated. Please refresh the page.');
       }
 
-      // Get AI settings from localStorage
       const result = await new Promise((resolve, reject) => {
-        if (!isExtensionContextValid()) {
-          reject(new Error('Extension context invalidated. Please refresh the page.'));
-          return;
-        }
-        chrome.storage.local.get(['aiChatSettings', 'selectedModel'], (result) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(result);
-          }
+        chrome.runtime.sendMessage({ action: 'getSettings' }, (cfg) => {
+          if (!cfg) reject(new Error('AI settings not configured'));
+          else resolve({ aiChatSettings: cfg, selectedModel });
         });
       });
 

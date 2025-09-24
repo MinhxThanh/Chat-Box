@@ -98,28 +98,60 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
     <div
       className={cn(
         "flex w-full mb-4 relative",
-        isUser ? "justify-end" : "justify-start"
+        isUser ? "justify-end items-start" : "justify-start"
       )}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
+      {isUser && !isEditing && (
+        isHovering && (
+        <div className="flex flex-col gap-1 mr-2 mt-2 shrink-0">
+          <button 
+            onClick={() => copyToClipboard(textContent)}
+            className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
+            title="Copy message"
+          >
+            <Copy size={16} />
+          </button>
+          {isLatestUserMessage && onRedoMessage && (
+            <button 
+              onClick={() => onRedoMessage(message)}
+              className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
+              title="Retry message"
+            >
+              <RefreshCw size={16} />
+            </button>
+          )}
+          {onEditMessage && (
+            <button 
+              onClick={() => setIsEditing(true)}
+              className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
+              title="Edit message"
+            >
+              <Edit size={16} />
+            </button>
+            )}
+          </div>
+        )
+      )}
       <div
         className={cn(
           "rounded-lg shadow-md",
           isUser
-            ? "max-w-[80%] text-primary-foreground"
-            : "w-full p-2 text-secondary-foreground mt-2 bg-[hsl(var(--ai-background))]"
+            ? "max-w-[80%] text-primary-foreground pb-2 pt-1"
+            : "w-full p-2 text-secondary-foreground mt-2 bg-[hsl(var(--ai-background))]/95"
         )}
       >
+        {/* Edit User Message Form */}
         {isUser ? (
           isEditing ? (
-            <div className="w-full">
+            <div className="rounded-2xl shadow-md bg-[#303030] px-4 py-2 text-[13px]">
               <textarea
                 ref={textareaRef}
                 value={editedContent}
                 onChange={(e) => setEditedContent(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full text-sm bg-transparent text-primary-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary-foreground/50 rounded p-1 min-h-[80px]"
+                className="w-[300px] bg-transparent text-primary-foreground text-[13px] resize-none focus:outline-none focus:ring-1 focus:ring-primary-foreground/50 rounded min-h-[80px]"
               />
               <div className="flex justify-end gap-2 mt-2">
                 <button
@@ -148,15 +180,16 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
                 // Handle array content with text and images
                 <>
                   {message.content.filter(item => item.type === 'text').map((item, i) => (
-                    <div key={`text-part-${i}`}><Markdown content={item.text} /></div>
+                    <div key={`text-part-${i}`}
+                    className="rounded-t-2xl bg-[hsl(var(--user-message))] px-4 py-2 text-[13px]"><Markdown content={item.text} /></div>
                   ))}
                   {message.content.filter(item => item.type === 'image_ref').map((item, i) => {
                     const imageUrl = imageUrls[item.imageId];
                     if (!imageUrl) return null;
                     return (
-                      <div key={`img-part-${i}`} className="mt-2 mb-2">
-                        <div className="rounded overflow-hidden border border-primary/20">
-                          <img src={imageUrl} alt="User upload" className="max-h-[200px] max-w-full object-contain" />
+                      <div key={`img-part-${i}`} className="mb-2 shadow-md">
+                        <div className="flex rounded-b-2xl overflow-hidden justify-end">
+                          <img src={imageUrl} alt="User upload" className="max-h-[200px] border border-primary/20 max-w-full object-contain" />
                         </div>
                       </div>
                     );
@@ -164,7 +197,7 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
                 </>
               ) : (
                 // Handle simple string content
-                <div className="rounded-2xl shadow-md bg-[#303030] px-4 py-2 text-[13px]">
+                <div className="rounded-2xl shadow-md bg-[hsl(var(--user-message))] px-4 py-2 text-[13px]">
                   {textContent && <Markdown content={displayMessage} />}
                 </div>
               )}
@@ -178,35 +211,6 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
                 </button>
               )}
               
-              {isHovering && (
-                <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-primary-foreground/20">
-                  <button 
-                    onClick={() => copyToClipboard(textContent)}
-                    className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
-                    title="Copy message"
-                  >
-                    <Copy size={16} />
-                  </button>
-                  {isLatestUserMessage && onRedoMessage && (
-                    <button 
-                      onClick={() => onRedoMessage(message)}
-                      className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
-                      title="Retry message"
-                    >
-                      <RefreshCw size={16} />
-                    </button>
-                  )}
-                  {onEditMessage && (
-                    <button 
-                      onClick={() => setIsEditing(true)}
-                      className="p-1 text-primary-foreground/70 hover:text-primary-foreground transition rounded-md hover:bg-primary-foreground/10"
-                      title="Edit message"
-                    >
-                      <Edit size={16} />
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
           )
         ) : (
@@ -246,24 +250,33 @@ export const Message = ({ message, imageUrls, isUser, isStreaming, onRedoMessage
               <span className="inline-block w-2 h-4 ml-1 bg-primary-foreground animate-pulse"></span>
             )}
             
-            {!isStreaming && isHovering && (
-              <div className="flex items-center justify-end gap-2 mt-1">
-                <button 
-                  onClick={() => copyToClipboard(message.content)}
-                  className="p-1 text-secondary-foreground/70 hover:text-secondary-foreground transition rounded-md hover:bg-secondary-foreground/10"
-                  title="Copy message"
-                >
-                  <Copy size={16} />
-                </button>
-                {onRedoMessage && (
+            {/* AI Message Actions */}
+            {!isStreaming && (
+              <div className="flex items-center justify-between mt-1">
+                {/* Model Info */}
+                <div className="text-xs text-secondary-foreground/70">
+                  {message.provider ? `[${message.provider}] ` : ''}{message.model || ''}
+                </div>
+
+                {/* Buttons: Copy and Regenerate */}
+                <div className="flex items-center gap-2">
                   <button 
-                    onClick={() => onRedoMessage(message)}
+                    onClick={() => copyToClipboard(message.content)}
                     className="p-1 text-secondary-foreground/70 hover:text-secondary-foreground transition rounded-md hover:bg-secondary-foreground/10"
-                    title="Regenerate response"
+                    title="Copy message"
                   >
-                    <RefreshCw size={16} />
+                    <Copy size={16} />
                   </button>
-                )}
+                  {onRedoMessage && (
+                    <button 
+                      onClick={() => onRedoMessage(message)}
+                      className="p-1 text-secondary-foreground/70 hover:text-secondary-foreground transition rounded-md hover:bg-secondary-foreground/10"
+                      title="Regenerate response"
+                    >
+                      <RefreshCw size={16} />
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>

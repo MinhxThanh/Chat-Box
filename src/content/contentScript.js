@@ -349,34 +349,15 @@ For each video, provide a structured summary with two sections: [Summary] and [H
 
 Use a clear, neutral, and professional tone. Ensure the output is engaging and easy to read, tailored to someone who wants a quick yet comprehensive overview of the video.`;
 
-    // Try to get settings from localStorage first (if accessible)
-    let localSettings = null;
-    try {
-      const localStorageSettings = localStorage.getItem('aiChatSettings');
-      if (localStorageSettings) {
-        localSettings = JSON.parse(localStorageSettings);
-      }
-    } catch (e) {
-      reject('Could not access localStorage, will use chrome.storage.local ' + e)
-    }
-
-    // Get API key and endpoint from chrome storage
+    // Get API key and endpoint from IndexedDB via background
     return new Promise((resolve, reject) => {
-      if (localSettings) {
-        // We have local settings, use them directly
-        processSettings(localSettings);
-      } else {
-        // Get from chrome.storage.local
-        chrome.storage.local.get(['aiChatSettings'], async (result) => {
-
-          if (!result || !result.aiChatSettings) {
-            reject('API settings not configured. Please set up your API settings in the extension settings.');
-            return;
-          }
-
-          processSettings(result.aiChatSettings);
-        });
-      }
+      chrome.runtime.sendMessage({ action: 'getSettings' }, (settings) => {
+        if (!settings || !settings.providers) {
+          reject('API settings not configured. Please set up your API settings in the extension settings.');
+          return;
+        }
+        processSettings(settings);
+      });
 
       async function processSettings(settings) {
 

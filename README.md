@@ -34,10 +34,14 @@ https://github.com/user-attachments/assets/bc03e6d0-92cb-4bea-81fb-1c67293cf79d
 
 ***Chat Box*** is a browser extension that streamlines your online experience by integrating AI chat, advanced web search, document interaction, and more into a convenient sidebar.
 
-## What's New In V0.7.2
-- **Improved Chat Experience**: General UI and usability enhancements.
-- **PDF support**: PDF support with HTML→Markdown conversion and chunking, using Turndown.
-- Saved API keys moved to IndexedDB (from local storage).
+## What's New In V0.7.3
+- **Ollama provider support**: Connect to local LLMs via Ollama using OpenAI-compatible endpoints.
+- **OpenRouter provider support**: Use models available through OpenRouter.
+- **SDK integration in Chat**: Native SDK paths for OpenAI-compatible, OpenAI, Anthropic (Claude), Ollama, Cerebras.. improve reliability and streaming.
+- **Provider config & validation**: Clear credential rules and consistent Load Models/Save behavior.
+  - API key only: OpenAI, DeepSeek, Claude, Cerebras, OpenRouter
+  - Endpoint only: Ollama
+  - API key + Endpoint: Custom 1, Custom 2
 
 ## Key Features
 
@@ -57,7 +61,7 @@ Chat Box offers a rich set of functionalities to streamline your AI interactions
 -   **📚 Improved Chat History**: Easily access and manage multiple past conversations with improved reliability.
 -   **⚙️ Flexible API Configuration & Refreshed UI**:
     -   Configure API keys and endpoints for various AI providers in a more intuitive settings panel.
-    -   Supports major providers like **OpenAI, DeepSeek, Claude (Anthropic), Cerebras**, as well as **Local LLMs (via Ollama)** and **Custom OpenAI-compatible endpoints**.
+    -   Supports major providers like **OpenAI, DeepSeek, Claude (Anthropic), Cerebras, OpenRouter**, as well as **Local LLMs (via Ollama)** and **Custom OpenAI-compatible endpoints**.
     -   Load and select from available AI models from your configured provider.
 -   **🚀 Advanced Web Search & Scraping**:
     -   Integrates with **Firecrawl** and **Jina AI** for superior web search results.
@@ -159,7 +163,7 @@ You can configure Chat Box to work with local LLMs like those served by [Ollama]
 -   **UI & Styling**: Tailwind CSS, Shadcn UI, Radix UI, Lucide React
 -   **Browser Extension**: Chrome Extension APIs (Manifest V3)
 -   **Local Database**: Dexie (IndexedDB)
--   **AI**: Called using an OpenAI-compatible REST API.
+-   **AI**: OpenAI-compatible REST plus provider SDKs (OpenAI, Anthropic/Claude, Cerebras); local LLMs via Ollama.
 
 
 ## License

@@ -12,6 +12,7 @@ import CustomPrompts from '../components/CustomPrompts';
 import ProvidersConfig from '../components/ProvidersConfig';
 import AdvancedSettings from '../components/AdvancedSettings';
 import WhatsNewDialog from '../components/WhatsNewDialog';
+import ExtentionInfo from '../components/ExtentionInfo';
 
 // Utility function to safely convert any value to a string for rendering
 const safeToString = (value) => {
@@ -225,7 +226,11 @@ const Sidebar = () => {
     return (
       <div className="p-4 space-y-4 h-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
         <div className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold">Settings</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">Settings</h2>
+            <ExtentionInfo />
+          </div>
+          
           <Button
             variant="ghost"
             size="icon"
@@ -538,7 +543,10 @@ const Sidebar = () => {
               conversation={currentConversation}
               onUpdateConversation={handleUpdateConversation}
               onNewConversation={createNewChat}
-              provider={settings.selectedProvider}
+              provider={(() => {
+                const sp = getSelectedProvider();
+                return sp?.provider || null;
+              })()}
               apiKey={(() => {
                 if (settings.selectedModel) {
                   const providerWithModel = settings.providers.find(p => p.models?.includes(settings.selectedModel));

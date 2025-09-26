@@ -11,6 +11,7 @@ import { saveImage, getImage } from "../utils/db";
 import { scrapeMultipleUrls } from "../utils/urlScraper";
 import { getSearchEngineConfig } from "../utils/searchUtils";
 import TurndownService from 'turndown';
+import { streamChatViaSDK, completeOnceViaSDK, detectSdkProvider } from "../utils/llmClient";
 
 export const Chat = ({
   conversation,
@@ -817,21 +818,24 @@ Consider this YouTube video context when responding.`;
       );
 
 
-      const modelToUse = model || "Default"; // Default model
-      const requestPayload = {
-        ...(modelToUse && { model: modelToUse }),
-        messages: filteredMessages,
-        max_tokens: 2000, // Adjust as needed
-        temperature: 0.5,
-        stream: true
-      };
+      const modelToUse = model || "Default";
+      // Try SDK path for specific providers
+      const sdkProvider = detectSdkProvider({ endpoint, providerHint: provider });
+      if (sdkProvider === 'openai' || sdkProvider === 'anthropic' || sdkProvider === 'ollama' || sdkProvider === 'cerebras') {
+        try {
+          const { stream } = await streamChatViaSDK({ provider: sdkProvider, apiKey, endpoint, model: modelToUse, messages: filteredMessages, abortSignal: signal });
+          if (stream) return { stream };
+        } catch (e) {
+          // Fall through to REST below
+        }
+      }
 
-      // console.log("API Request Payload (Streaming):", JSON.stringify(requestPayload, null, 2));
+      // REST fallback (OpenAI-compatible)
       const response = await fetch(completionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify(requestPayload),
-        signal // Add the abort signal to the fetch request
+        body: JSON.stringify({ model: modelToUse, messages: filteredMessages, max_tokens: 2000, temperature: 0.5, stream: true }),
+        signal
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: { message: response.statusText } }));
@@ -956,7 +960,18 @@ Consider this YouTube video context when responding.`;
         }
         return null;
       })();
-      // console.log("API Request Payload (Regular Fallback):", JSON.stringify({ model: modelToUse, messages: filteredMessages, max_tokens: 2000, temperature: 0.7 }, null, 2));
+      // Try SDK for supported providers first
+      const sdkProvider = detectSdkProvider({ endpoint, providerHint: provider });
+      if (sdkProvider === 'openai' || sdkProvider === 'anthropic' || sdkProvider === 'ollama' || sdkProvider === 'cerebras') {
+        try {
+          const res = await completeOnceViaSDK({ provider: sdkProvider, apiKey, endpoint, model: modelToUse, messages: filteredMessages });
+          return { content: res.content, meta: { model: modelToUse, providerName } };
+        } catch (e) {
+          // fall through to REST
+        }
+      }
+
+      // REST fallback (OpenAI-compatible)
       const response = await fetch(completionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },

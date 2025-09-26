@@ -16,22 +16,26 @@ const WhatsNewDialog = ({ open, onOpenChange }) => {
         </DialogHeader>
         
         <div className="mt-4 space-y-4">
-          <div className="bg-primary/10 p-4 rounded-lg border">
+          <div className="p-4 rounded-lg border">
             <h3 className="font-semibold text-lg text-primary mb-2">
-              Version 0.7.2
+              Version 0.7.3
             </h3>
             <div className="text-sm space-y-2">
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Improved chat experience</span>
+                <span>Added Ollama provider support</span>
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>PDF support: HTML → Markdown conversion and smart chunking</span>
+                <span>Added OpenRouter provider support</span>
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Saved API keys moved to IndexedDB (from local storage)</span>
+                <span>SDK framework integration for all providers in chat</span>
+              </div>
+              <div className="flex items-start space-x-2">
+                <span className="text-green-500 font-bold">✓</span>
+                <span>Improved provider configuration and validation</span>
               </div>
             </div>
           </div>

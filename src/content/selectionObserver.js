@@ -1374,13 +1374,20 @@ Here is the text to correct:
       // Create abort controller for stream cancellation
       currentStreamController = new AbortController();
       
+      // Build OpenAI-compatible completion URL (ensure /v1 prefix)
+      const baseEndpoint = String(selectedProvider.endpoint || 'https://api.openai.com/v1').replace(/\/+$/, '');
+      const completionUrl = baseEndpoint.endsWith('/v1') ? `${baseEndpoint}/chat/completions` : `${baseEndpoint}/v1/chat/completions`;
+
       // Make streaming API call
-      const response = await fetch(selectedProvider.endpoint + '/chat/completions', {
+      const response = await fetch(completionUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${selectedProvider.apiKey}`
-        },
+        headers: (() => {
+          const headers = { 'Content-Type': 'application/json' };
+          const providerName = (selectedProvider.name || selectedProvider.provider || '').toLowerCase();
+          const needsAuth = !!selectedProvider.apiKey && !(providerName === 'ollama' || providerName === 'local');
+          if (needsAuth) headers['Authorization'] = `Bearer ${selectedProvider.apiKey}`;
+          return headers;
+        })(),
         body: JSON.stringify(apiPayload),
         signal: currentStreamController.signal
       });

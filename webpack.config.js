@@ -1,6 +1,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CopyPlugin = require('copy-webpack-plugin');
+const webpack = require('webpack');
 
 module.exports = {
   entry: {
@@ -53,8 +54,16 @@ module.exports = {
         { from: 'node_modules/pdfjs-dist/build/pdf.worker.mjs', to: 'pdf.worker.mjs', noErrorOnMissing: true },
       ],
     }),
+    new webpack.ProvidePlugin({
+      process: 'process/browser'
+    })
   ],
   resolve: {
     extensions: ['.js', '.jsx'],
+    fallback: {
+      fs: false,
+      path: false,
+      'process/browser': require.resolve('process/browser')
+    }
   },
 };

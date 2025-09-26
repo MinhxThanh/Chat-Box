@@ -418,10 +418,9 @@ Use a clear, neutral, and professional tone. Ensure the output is engaging and e
         }
 
         try {
-          // Build the chat completion URL
-          const completionUrl = endpoint.endsWith('/') ?
-            `${endpoint}chat/completions` :
-            `${endpoint}/chat/completions`;
+          // Build the chat completion URL (normalize to OpenAI-compatible /v1/chat/completions)
+          const normalizedBase = String(endpoint || 'https://api.openai.com/v1').replace(/\/+$/, '');
+          const completionUrl = normalizedBase.endsWith('/v1') ? `${normalizedBase}/chat/completions` : `${normalizedBase}/v1/chat/completions`;
 
           // Create the request payload - now with streaming enabled
           const requestPayload = {
@@ -451,7 +450,8 @@ Use a clear, neutral, and professional tone. Ensure the output is engaging and e
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
+              // Ollama should not send Authorization; others need it
+              ...(String(endpoint).includes('127.0.0.1:11434') || String(endpoint).includes('ollama') ? {} : { 'Authorization': `Bearer ${apiKey}` })
             },
             body: JSON.stringify(requestPayload)
           });

@@ -1,6 +1,6 @@
 {
   "name": "chat-box",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "AI chat, advanced web search, document interaction, and more into a convenient sidebar.",
   "scripts": {
     "dev": "webpack --watch --mode=development",
@@ -8,6 +8,8 @@
     "build:firefox": "npm run build && rm -rf dist-firefox dist-firefox.zip && mkdir dist-firefox && cp -R dist/* dist-firefox/ && cp dist/manifest.firefox.json dist-firefox/manifest.json && (cd dist-firefox && zip -r ../dist-firefox.zip .)"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.63.1",
+    "@cerebras/cerebras_cloud_sdk": "^1.50.0",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-label": "^2.0.2",
@@ -22,8 +24,11 @@
     "idb": "^8.0.3",
     "lucide-react": "^0.279.0",
     "mammoth": "^1.9.1",
+    "ollama": "^0.5.18",
+    "openai": "^5.23.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.3.31",
+    "process": "^0.11.10",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-i18next": "^15.6.0",

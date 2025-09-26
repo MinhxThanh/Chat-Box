@@ -18,7 +18,11 @@ import ClaudeIcon from "../../assets/providers/anthropic.svg";
 import DeepSeekIcon from "../../assets/providers/DeepSeek.svg";
 import CerebrasIcon from "../../assets/providers/Cerebras.svg";
 import CustomIcon from "../../assets/providers/Custom.svg";
+import OllamaIcon from "../../assets/providers/Ollama.svg";
+import OpenRouterIcon from "../../assets/providers/OpenRouter.svg";
 import LocalIcon from "../../assets/providers/local.svg";
+
+import { listModelsViaSDK, detectSdkProvider } from "../utils/llmClient";
 
 // Utility function to safely convert any value to a string for rendering
 const safeToString = (value) => {
@@ -186,14 +190,26 @@ const ProvidersConfig = ({
       icon: CerebrasIcon,
     },
     {
-      provider: "local",
-      name: "Local",
+      provider: "openrouter",
+      name: "OpenRouter",
+      endpoint: "https://openrouter.ai/api/v1",
+      icon: OpenRouterIcon,
+    },
+    {
+      provider: "ollama",
+      name: "Ollama",
+      endpoint: "http://127.0.0.1:11434",
+      icon: OllamaIcon,
+    },
+    {
+      provider: "custom",
+      name: "Custom 1",
       endpoint: "",
       icon: LocalIcon,
     },
     {
-      provider: "custom",
-      name: "Custom",
+      provider: "custom2",
+      name: "Custom 2",
       endpoint: "",
       icon: CustomIcon,
     },
@@ -233,12 +249,15 @@ const ProvidersConfig = ({
       const template = predefinedProviders.find(
         (p) => p.provider === providerType
       );
+      // Set default API key based on provider type
+      const defaultApiKey = providerType === "ollama" ? "no-key" : "";
+
       const newProvider = {
         selectedProvider: true,
         provider: providerType,
         name: template.name,
         endpoint: template.endpoint,
-        apiKey: "",
+        apiKey: defaultApiKey,
         models: [],
       };
 
@@ -271,12 +290,13 @@ const ProvidersConfig = ({
     });
   };
 
-  // Update provider's endpoint (for custom and local)
+  // Update provider's endpoint (for custom, custom2 and ollama)
   const updateProviderEndpoint = (endpoint) => {
     if (
       !selectedProvider ||
       (selectedProvider.provider !== "custom" &&
-        selectedProvider.provider !== "local")
+        selectedProvider.provider !== "custom2" &&
+        selectedProvider.provider !== "ollama")
     )
       return;
 
@@ -300,60 +320,52 @@ const ProvidersConfig = ({
       return;
     }
 
-    if (!selectedProvider.apiKey) {
-      showAlert("API Key Required", "Please enter your API key first");
-      return;
+    // Check credentials by provider type
+    const providerType = selectedProvider.provider;
+    // API key only providers
+    if (["openai", "claude", "deepseek", "cerebras", "openrouter"].includes(providerType)) {
+      if (!selectedProvider.apiKey) {
+        showAlert("API Key Required", "Please enter your API key first");
+        return;
+      }
     }
-
-    // For custom provider, ensure endpoint is set
-    if (
-      (selectedProvider.provider === "custom" ||
-        selectedProvider.provider === "local") &&
-      !selectedProvider.endpoint
-    ) {
-      showAlert(
-        "Endpoint Required",
-        "Please enter the API endpoint for your custom or local provider."
-      );
-      return;
+    // Endpoint only providers
+    if (["ollama"].includes(providerType)) {
+      if (!selectedProvider.endpoint) {
+        showAlert("Endpoint Required", `Please enter the API endpoint for your ${selectedProvider.name} provider.`);
+        return;
+      }
+    }
+    // Both API key and endpoint providers
+    if (["custom", "custom2"].includes(providerType)) {
+      if (!selectedProvider.apiKey) {
+        showAlert("API Key Required", "Please enter your API key first");
+        return;
+      }
+      if (!selectedProvider.endpoint) {
+        showAlert("Endpoint Required", `Please enter the API endpoint for your ${selectedProvider.name} provider.`);
+        return;
+      }
     }
 
     setLoading(true);
     try {
       const endpoint = selectedProvider.endpoint;
+      const providerHint = selectedProvider.provider;
+      const sdkProvider = detectSdkProvider({ endpoint, providerHint });
+      const models = await listModelsViaSDK({ provider: sdkProvider, apiKey: selectedProvider.apiKey, endpoint });
 
-      // This is a simplified example - actual endpoint might be different based on the AI provider
-      const response = await fetch(`${endpoint}/models`, {
-        headers: {
-          Authorization: `Bearer ${selectedProvider.apiKey}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to load models: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      // Extract models from response (format varies by provider)
-      const models = data.data || data.models || [];
-
-      // Find the current provider by ID instead of the selectedProvider flag
       const providerType = selectedProvider.provider;
-
-      // Update only the specific provider with the models, preserving all other providers
       const updatedProviders = settings.providers.map((provider) => {
         if (provider.provider === providerType) {
           return {
             ...provider,
-            models: models.map((m) => m.id || m),
+            models: (models || []).map((m) => (typeof m === 'string' ? m : (m?.id || m)))
           };
         }
         return provider;
       });
 
-      // Update settings with available models
       onSettingsChange({
         ...settings,
         providers: updatedProviders,
@@ -457,28 +469,40 @@ const ProvidersConfig = ({
 
     // Only validate if there's a current provider
     if (provider) {
-      // Only validate the provider if it has data - if it has no API key,
-      // we'll still save it but it won't be usable
-      if (
-        provider.apiKey &&
-        provider.provider === "custom" &&
-        !provider.endpoint
-      ) {
-        showAlert(
-          "Endpoint Required",
-          "Please enter an endpoint for your custom provider."
-        );
-        return;
+      // Strict validation for custom providers: require BOTH apiKey and endpoint
+      if (provider.provider === "custom" || provider.provider === "custom2") {
+        if (!provider.apiKey) {
+          showAlert("API Key Required", "Please enter an API key for your custom provider.");
+          return;
+        }
+        if (!provider.endpoint) {
+          showAlert("Endpoint Required", "Please enter an endpoint for your custom provider.");
+          return;
+        }
       }
     }
 
-    // Filter out any providers with no API key before saving
-    const providersToSave = settings.providers.filter((p) => p.apiKey);
+    // Filter out any providers that are not properly configured before saving
+    const providersToSave = settings.providers.filter((p) => {
+      // API key only
+      if (["openai", "claude", "deepseek", "cerebras", "openrouter"].includes(p.provider)) {
+        return !!p.apiKey;
+      }
+      // Endpoint only
+      if (["ollama"].includes(p.provider)) {
+        return !!p.endpoint;
+      }
+      // Both API key and endpoint
+      if (["custom", "custom2"].includes(p.provider)) {
+        return !!p.apiKey && !!p.endpoint;
+      }
+      return false; // Unknown provider type
+    });
 
     if (providersToSave.length === 0) {
       showAlert(
         "Provider Required",
-        "Please configure at least one provider with an API key before saving."
+        "Please configure at least one provider with proper credentials (API key or endpoint) before saving."
       );
       return;
     }
@@ -535,24 +559,28 @@ const ProvidersConfig = ({
       </div>
 
       {/* API Key for all providers */}
-      <div className="space-y-2">
-        <Label htmlFor="apiKey">API Key</Label>
-        <Input
-          id="apiKey"
-          type="password"
-          value={selectedProvider?.apiKey || ""}
-          onChange={(e) => updateProviderApiKey(e.target.value)}
-          placeholder={
-            selectedProvider?.provider === "local"
-              ? "API Key (default: no-key)"
-              : `Enter your ${selectedProvider?.name || "provider"} API key`
-          }
-        />
-      </div>
+      {!(
+        [
+          (selectedProvider?.provider || '').toLowerCase(),
+          (selectedProvider?.name || '').toLowerCase(),
+        ].some((p) => p === 'ollama')
+      ) && (
+        <div className="space-y-2">
+          <Label htmlFor="apiKey">API Key</Label>
+          <Input
+            id="apiKey"
+            type="password"
+            value={selectedProvider?.apiKey || ""}
+            onChange={(e) => updateProviderApiKey(e.target.value)}
+            placeholder={`Enter your ${selectedProvider?.name || "provider"} API key`}
+          />
+        </div>
+      )}
 
-      {/* Endpoint (for custom and local providers) */}
+      {/* Endpoint (for custom/custom2 and ollama providers) */}
       {(selectedProvider?.provider === "custom" ||
-        selectedProvider?.provider === "local") && (
+        selectedProvider?.provider === "custom2" ||
+        selectedProvider?.provider === "ollama") && (
         <div className="space-y-2">
           <Label htmlFor="endpoint">API Endpoint</Label>
           <Input
@@ -561,8 +589,8 @@ const ProvidersConfig = ({
             value={selectedProvider?.endpoint || ""}
             onChange={(e) => updateProviderEndpoint(e.target.value)}
             placeholder={
-              selectedProvider?.provider === "local"
-                ? "http://localhost:11434/v1"
+              selectedProvider?.provider === "ollama"
+                ? "http://127.0.0.1:11434"
                 : "https://api.example.com/v1"
             }
           />
@@ -586,7 +614,7 @@ const ProvidersConfig = ({
               variant="outline"
               size="sm"
               onClick={loadModels}
-              disabled={loading || !selectedProvider?.apiKey}
+              disabled={loading}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Load Models

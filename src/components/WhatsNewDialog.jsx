@@ -18,24 +18,16 @@ const WhatsNewDialog = ({ open, onOpenChange }) => {
         <div className="mt-4 space-y-4">
           <div className="p-4 rounded-lg border">
             <h3 className="font-semibold text-lg text-primary mb-2">
-              Version 0.7.3
+              Version 0.7.4
             </h3>
             <div className="text-sm space-y-2">
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Added Ollama provider support</span>
+                <span>Fixed OpenRouter response error</span>
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Added OpenRouter provider support</span>
-              </div>
-              <div className="flex items-start space-x-2">
-                <span className="text-green-500 font-bold">✓</span>
-                <span>SDK framework integration for all providers in chat</span>
-              </div>
-              <div className="flex items-start space-x-2">
-                <span className="text-green-500 font-bold">✓</span>
-                <span>Improved provider configuration and validation</span>
+                <span>Added clear button to remove all provider configuration</span>
               </div>
             </div>
           </div>

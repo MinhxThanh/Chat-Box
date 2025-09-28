@@ -17,7 +17,7 @@ const ExtentionInfo = () => {
         className="cursor-pointer px-4 py-1 border border-primary rounded-2xl text-primary hover:border-primary/80 hover:text-primary-foreground duration-200 transition-all"
         onClick={() => setOpen(true)}
       >
-        v0.7.3
+        v0.7.4
       </span>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogClose className={`absolute right-4 top-4 p-2 rounded-full hover:bg-background hover:border hover:border-red-300 hover:text-red-300 hover:rotate-12 duration-200 transition-all`}/>
@@ -33,23 +33,36 @@ const ExtentionInfo = () => {
         </DialogHeader>
         <div className="space-y-4 py-12 px-6">
           <div className="p-4 rounded-lg border">
-            <h3 className="text-lg font-semibold mb-2">Version 0.7.3</h3>
+            <h3 className="text-lg font-semibold mb-2">Version 0.7.4</h3>
             <div className="text-sm space-y-2">
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Added Ollama provider support</span>
+                <span>Fixed OpenRouter response error</span>
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-green-500 font-bold">✓</span>
-                <span>Added OpenRouter provider support</span>
+                <span>Added clear button to remove all provider configuration</span>
               </div>
-              <div className="flex items-start space-x-2">
-                <span className="text-green-500 font-bold">✓</span>
-                <span>SDK framework integration for all providers in chat</span>
-              </div>
-              <div className="flex items-start space-x-2">
-                <span className="text-green-500 font-bold">✓</span>
-                <span>Improved provider configuration and validation</span>
+            </div>
+            <div className="mt-4 pt-4 border-t">
+              <h3 className="text-lg font-semibold mb-2">Version 0.7.3</h3>
+              <div className="text-sm space-y-2">
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-500 font-bold">✓</span>
+                  <span>Added Ollama provider support</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-500 font-bold">✓</span>
+                  <span>Added OpenRouter provider support</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-500 font-bold">✓</span>
+                  <span>SDK framework integration for all providers in chat</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-500 font-bold">✓</span>
+                  <span>Improved provider configuration and validation</span>
+                </div>
               </div>
             </div>
             <div className="mt-4 pt-4 border-t">

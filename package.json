@@ -1,6 +1,6 @@
 {
   "name": "chat-box",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "AI chat, advanced web search, document interaction, and more into a convenient sidebar.",
   "scripts": {
     "dev": "webpack --watch --mode=development",

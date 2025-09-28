@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Save, Loader2, Minus, Download, Upload, Plus } from "lucide-react";
+import { Save, Loader2, Minus, Download, Upload, Plus, Trash } from "lucide-react";
 import {
   Dialog,
   DialogHeader,
@@ -23,6 +23,7 @@ import OpenRouterIcon from "../../assets/providers/OpenRouter.svg";
 import LocalIcon from "../../assets/providers/local.svg";
 
 import { listModelsViaSDK, detectSdkProvider } from "../utils/llmClient";
+import { deletePreference } from "../utils/db";
 
 // Utility function to safely convert any value to a string for rendering
 const safeToString = (value) => {
@@ -48,6 +49,7 @@ const ProvidersConfig = ({
   const fileInputRef = useRef(null);
   const [isAddModelOpen, setIsAddModelOpen] = useState(false);
   const [newModelId, setNewModelId] = useState("");
+  const [isClearAllOpen, setIsClearAllOpen] = useState(false);
 
   // Export providers configuration
   const handleExportProviders = () => {
@@ -378,6 +380,26 @@ const ProvidersConfig = ({
     }
   };
 
+  // Open confirm dialog to clear all provider configuration
+  const clearModels = () => {
+    setIsClearAllOpen(true);
+  };
+
+  // Confirm removal of all provider configuration (aiChatSettings)
+  const handleConfirmClearAll = async () => {
+    try {
+      await deletePreference('aiChatSettings');
+    } catch (_) {}
+    onSettingsChange({
+      providers: [],
+      selectedModel: null,
+      quickActionsEnabled: true,
+      quickActionsBlocklist: []
+    });
+    setIsClearAllOpen(false);
+    showAlert('Success', 'All provider configuration has been cleared.');
+  };
+
   // Select a model from the current provider
   const selectModel = (model) => {
     onSettingsChange({
@@ -605,6 +627,15 @@ const ProvidersConfig = ({
             <Button
               variant="outline"
               size="sm"
+              onClick={clearModels}
+              disabled={!selectedProvider}
+              className="hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <Trash className="h-4 w-4 mr-2" /> Clear
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={openAddModelDialog}
               disabled={!selectedProvider}
             >
@@ -688,6 +719,23 @@ const ProvidersConfig = ({
               Cancel
             </Button>
             <Button onClick={handleConfirmAddModel}>Add</Button>
+          </DialogFooter>
+        </div>
+      </Dialog>
+
+      {/* Clear All Providers Confirm Dialog */}
+      <Dialog open={isClearAllOpen} onOpenChange={setIsClearAllOpen}>
+        <div className="relative p-6">
+          <DialogHeader>
+            <DialogTitle>Remove all provider configuration?</DialogTitle>
+            <DialogClose />
+          </DialogHeader>
+          <DialogDescription>
+            This will remove all saved AI provider settings. This action cannot be undone.
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsClearAllOpen(false)}>No</Button>
+            <Button variant="destructive" onClick={handleConfirmClearAll}>Yes, remove all</Button>
           </DialogFooter>
         </div>
       </Dialog>

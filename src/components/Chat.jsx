@@ -817,13 +817,16 @@ Consider this YouTube video context when responding.`;
         !(msg.role === "system" && msg.content.startsWith("⚠️ Network error during AI query analysis"))
       );
 
+      // Sanitize messages: keep only role and content for API compatibility (e.g., Mistral strict schema)
+      const sanitizedMessages = filteredMessages.map((m) => ({ role: m.role, content: m.content }));
+
 
       const modelToUse = model || "Default";
       // Try SDK path for specific providers
       const sdkProvider = detectSdkProvider({ endpoint, providerHint: provider });
-      if (sdkProvider === 'openai' || sdkProvider === 'anthropic' || sdkProvider === 'ollama' || sdkProvider === 'cerebras') {
+      if (sdkProvider === 'openai' || sdkProvider === 'anthropic' || sdkProvider === 'ollama' || sdkProvider === 'cerebras' || sdkProvider === 'openrouter') {
         try {
-          const { stream } = await streamChatViaSDK({ provider: sdkProvider, apiKey, endpoint, model: modelToUse, messages: filteredMessages, abortSignal: signal });
+          const { stream } = await streamChatViaSDK({ provider: sdkProvider, apiKey, endpoint, model: modelToUse, messages: sanitizedMessages, abortSignal: signal });
           if (stream) return { stream };
         } catch (e) {
           // Fall through to REST below
@@ -834,7 +837,7 @@ Consider this YouTube video context when responding.`;
       const response = await fetch(completionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: modelToUse, messages: filteredMessages, max_tokens: 2000, temperature: 0.5, stream: true }),
+        body: JSON.stringify({ model: modelToUse, messages: sanitizedMessages, max_tokens: 2000, temperature: 0.5, stream: true }),
         signal
       });
       if (!response.ok) {
@@ -949,6 +952,9 @@ Consider this YouTube video context when responding.`;
         !(msg.role === "system" && msg.content.startsWith("⚠️ Network error during AI query analysis"))
       );
 
+      // Sanitize messages: keep only role and content for API compatibility (e.g., Mistral strict schema)
+      const sanitizedMessages = filteredMessages.map((m) => ({ role: m.role, content: m.content }));
+
       const modelToUse = model || "Default";
       const providerName = (() => {
         if (availableModels && typeof availableModels === 'object') {
@@ -962,9 +968,9 @@ Consider this YouTube video context when responding.`;
       })();
       // Try SDK for supported providers first
       const sdkProvider = detectSdkProvider({ endpoint, providerHint: provider });
-      if (sdkProvider === 'openai' || sdkProvider === 'anthropic' || sdkProvider === 'ollama' || sdkProvider === 'cerebras') {
+      if (sdkProvider === 'openai' || sdkProvider === 'anthropic' || sdkProvider === 'ollama' || sdkProvider === 'cerebras' || sdkProvider === 'openrouter') {
         try {
-          const res = await completeOnceViaSDK({ provider: sdkProvider, apiKey, endpoint, model: modelToUse, messages: filteredMessages });
+          const res = await completeOnceViaSDK({ provider: sdkProvider, apiKey, endpoint, model: modelToUse, messages: sanitizedMessages });
           return { content: res.content, meta: { model: modelToUse, providerName } };
         } catch (e) {
           // fall through to REST
@@ -975,7 +981,7 @@ Consider this YouTube video context when responding.`;
       const response = await fetch(completionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: modelToUse, messages: filteredMessages, max_tokens: 2000, temperature: 0.5 })
+        body: JSON.stringify({ model: modelToUse, messages: sanitizedMessages, max_tokens: 2000, temperature: 0.5 })
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: { message: response.statusText } }));
@@ -1346,10 +1352,10 @@ Consider this YouTube video context when responding.`;
         apiUserMessageContent = apiTextContent + (uploadedFile ? `\n[File attached: ${uploadedFile.file.name}]` : "");
     }
     
-    const uiUserMessage = { 
-        role: "user", 
+    const uiUserMessage = {
+        role: "user",
         content: uiUserMessageContent,
-        selectedText: selectedText // Add selected text as a separate property for UI display
+        ...(selectedText && { selectedText }) // Add selected text as a separate property for UI display only if it exists
     };
     setMessages(prev => [...prev, uiUserMessage]); // Add user message to UI
 

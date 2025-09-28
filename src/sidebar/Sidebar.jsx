@@ -165,7 +165,7 @@ const Sidebar = () => {
 
   // Check if user should see the "What's New" dialog
   useEffect(() => {
-    const CURRENT_VERSION = '0.5.3';
+    const CURRENT_VERSION = '0.7.4';
     const WHATS_NEW_KEY = `whatsNew_${CURRENT_VERSION}`;
     
     // Check if user has already seen the What's New dialog for this version
@@ -181,7 +181,7 @@ const Sidebar = () => {
 
   // Function to handle closing the What's New dialog
   const handleWhatsNewClose = () => {
-    const CURRENT_VERSION = '0.5.3';
+    const CURRENT_VERSION = '0.7.4';
     const WHATS_NEW_KEY = `whatsNew_${CURRENT_VERSION}`;
     
     // Mark as seen in localStorage

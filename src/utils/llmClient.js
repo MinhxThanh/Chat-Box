@@ -11,7 +11,7 @@ export function detectSdkProvider({ endpoint, providerHint }) {
   const url = (endpoint || "").toLowerCase();
   if (providerHint === 'claude' || url.includes('anthropic')) return 'anthropic';
   if (providerHint === 'openai' || url.includes('openai.com')) return 'openai';
-  if (providerHint === 'openrouter' || url.includes('openrouter.ai')) return 'openai';
+  if (providerHint === 'openrouter' || url.includes('openrouter.ai')) return 'openrouter';
   if (providerHint === 'deepseek' || url.includes('deepseek.com')) return 'openai';
   if (providerHint === 'cerebras' || url.includes('cerebras.ai')) return 'cerebras';
   if (providerHint === 'ollama' || url.includes('11434') || url.includes('ollama')) return 'openai';
@@ -106,7 +106,7 @@ export async function streamChatViaSDK({ provider, apiKey, endpoint, model, mess
   }
 
   if (provider === 'cerebras') {
-    const client = new Cerebras({ apiKey, baseURL: (endpoint || '').replace(/\/$/, '') || undefined });
+    const client = new Cerebras({ apiKey, baseURL: (endpoint || '').replace(/\/v1\/?$/, '') || undefined });
     const iterator = (async function* () {
       const stream = await client.chat.completions.create({ model, messages, stream: true });
       for await (const part of stream) {
@@ -142,7 +142,23 @@ export async function streamChatViaSDK({ provider, apiKey, endpoint, model, mess
     }
   }
 
-  // Default: OpenAI SDK (works for OpenAI, DeepSeek, OpenRouter, LM Studio via baseURL)
+  if (provider === 'openrouter') {
+    const client = new OpenAI({
+      apiKey,
+      baseURL: normalizeOpenAIBaseURL(endpoint),
+      dangerouslyAllowBrowser: true,
+      defaultHeaders: {
+        'HTTP-Referer': window.location.origin || 'https://chax-box.vercel.app',
+        'X-Title': 'Chax Box'
+      }
+    });
+    const stream = await client.chat.completions.create({ model, messages, stream: true });
+    // Always normalize SDK stream into SSE for consistent parsing in Chat.jsx
+    const iterator = (async function* () { for await (const part of stream) yield part; })();
+    return { stream: toSSEStreamFromAsyncIterator(iterator) };
+  }
+
+  // Default: OpenAI SDK (works for OpenAI, DeepSeek, LM Studio via baseURL)
   const client = new OpenAI({
     apiKey,
     baseURL: normalizeOpenAIBaseURL(endpoint),
@@ -169,7 +185,7 @@ export async function completeOnceViaSDK({ provider, apiKey, endpoint, model, me
   }
 
   if (provider === 'cerebras') {
-    const client = new Cerebras({ apiKey, baseURL: (endpoint || '').replace(/\/$/, '') || undefined });
+    const client = new Cerebras({ apiKey, baseURL: (endpoint || '').replace(/\/v1\/?$/, '') || undefined });
     const res = await client.chat.completions.create({ model, messages, stream: false });
     const content = res?.choices?.[0]?.message?.content || '';
     return { content };
@@ -190,6 +206,21 @@ export async function completeOnceViaSDK({ provider, apiKey, endpoint, model, me
     } catch (_) {
       // fall through to OpenAI-compatible path
     }
+  }
+
+  if (provider === 'openrouter') {
+    const client = new OpenAI({
+      apiKey,
+      baseURL: normalizeOpenAIBaseURL(endpoint),
+      dangerouslyAllowBrowser: true,
+      defaultHeaders: {
+        'HTTP-Referer': window.location.origin || 'https://chax-box.vercel.app',
+        'X-Title': 'Chax Box'
+      }
+    });
+    const res = await client.chat.completions.create({ model, messages, stream: false, temperature: 0.5, max_tokens: 2000 });
+    const content = res?.choices?.[0]?.message?.content || '';
+    return { content };
   }
 
   const client = new OpenAI({
@@ -218,7 +249,7 @@ export async function listModelsViaSDK({ provider, apiKey, endpoint }) {
 
     if (provider === 'cerebras') {
       try {
-        const client = new Cerebras({ apiKey, baseURL: (endpoint || '').replace(/\/$/, '') || undefined });
+        const client = new Cerebras({ apiKey, baseURL: (endpoint || '').replace(/\/v1\/?$/, '') || undefined });
         const list = await client.models.list();
         const models = Array.isArray(list?.data) ? list.data.map(m => m?.id).filter(Boolean) : [];
         if (models.length > 0) return models;
@@ -236,9 +267,26 @@ export async function listModelsViaSDK({ provider, apiKey, endpoint }) {
       } catch (_) {}
     }
 
+    if (provider === 'openrouter') {
+      try {
+        const client = new OpenAI({
+          apiKey,
+          baseURL: normalizeOpenAIBaseURL(endpoint),
+          dangerouslyAllowBrowser: true,
+          defaultHeaders: {
+            'HTTP-Referer': window.location.origin || 'https://chax-box.vercel.app',
+            'X-Title': 'Chax Box'
+          }
+        });
+        const list = await client.models.list();
+        const models = Array.isArray(list?.data) ? list.data.map(m => m?.id).filter(Boolean) : [];
+        if (models.length > 0) return models;
+      } catch (_) {}
+    }
+
     // LM Studio handled by generic OpenAI-compatible fallback below
 
-    // Default OpenAI-compatible via OpenAI SDK (OpenAI/DeepSeek/OpenRouter/LM Studio)
+    // Default OpenAI-compatible via OpenAI SDK (OpenAI/DeepSeek/LM Studio)
     const client = new OpenAI({
       apiKey,
       baseURL: normalizeOpenAIBaseURL(endpoint),
